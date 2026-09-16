@@ -1445,6 +1445,19 @@ void TechnoTypeExt::LoadFromINIFile(CCINIClass* const pINI)
 
 	DropCrate.Read(exINI, pSection, "DropCrate");
 
+	// Names a [CrateTypes] entry, a vanilla [Powerups] crate, or "Random". A value that resolves
+	// to nothing is reported and ignored instead of silently falling back to some other crate.
+	if (exINI.ReadString(pSection, "CrateType"))
+	{
+		const int source = CrateSource::Parse(exINI.value());
+
+		if (source != CrateSource::Invalid)
+			CrateType = source;
+		else
+			Debug::INIParseFailed(pSection, "CrateType", exINI.value(),
+				"Expected a [CrateTypes] name, a [Powerups] crate name or \"Random\"");
+	}
+
 	// VoiceIFVRepair from Ares 0.2
 	this->VoiceIFVRepair.Read(exINI, pSection, "VoiceIFVRepair");
 	this->ParseVoiceWeaponAttacks(exINI, pSection, this->VoiceWeaponAttacks, this->VoiceEliteWeaponAttacks);
@@ -1782,6 +1795,7 @@ void TechnoTypeExt::Serialize(T& Stm)
 		//.Process(this->SecondaryFire)
 
 		.Process(this->DropCrate)
+		.Process(this->CrateType)
 
 		.Process(this->DebrisTypes_Limit)
 		.Process(this->DebrisMinimums)

@@ -448,6 +448,7 @@ HideShakeEffects=false           ; boolean
 - [Customize `IdleActionFrequency`](Fixed-or-Improved-Logics.md#customize-idleactionfrequency) (by Noble_Fish)
 - [Enter the grinder voice](Fixed-or-Improved-Logics.md#enter-the-grinder-voice) (by FlyStar)
 - Customize the country displayed in `Sight` (by FlyStar)
+- [Custom crate types](New-or-Enhanced-Logics.md#custom-crate-types) (by Otamaa, based on the original 2022 proof of concept)
 
 #### Vanilla fixes:
 - Fixed the bug where a building with `Factory=BuildingType` owned by the AI did not play `ProductionAnim` when placing a produced building (by Noble_Fish)

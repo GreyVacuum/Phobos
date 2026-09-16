@@ -3900,3 +3900,83 @@ CanTargetVeterancy=all      ; List of Affected Veterancy Enumeration (none|rooki
 ```{note}
 `CanTarget` explicitly requires either `all` or `empty` to be listed for the weapon to be able to fire at cells containing no TechnoTypes.
 ```
+
+### Custom crate types
+
+- Every crate type carries a `Crate.TypeID`, and that number is how everything else selects it: a `CrateType` key on a techno type, and the crate type parameter of map trigger action `108 Create Crate`. Ids start at `21` so they can never be taken for a vanilla crate index.
+- A `CrateType` key also accepts the crate type's name, a vanilla crate name (`Money`, `Unit`, `HealBase`, `Cloak`, `Explosion`, `Napalm`, `Squad`, `Darkness`, `Reveal`, `Armor`, `Speed`, `Firepower`, `ICBM`, `Invulnerability`, `Veteran`, `IonStorm`, `Gas`, `Tiberium`, `Pod`) or `Random`. Leaving it out keeps whatever the game does on its own, and a value that resolves to nothing is reported instead of quietly selecting a different crate.
+- A crate type is described by listing what it does. Every key acts on its own and any combination of them works, so there is no crate "kind" to choose between and no key that is ignored because a different key picked a different kind.
+- Custom crates are handled independently of the vanilla `[Powerups]` table, so no vanilla powerup slot has to be enabled or reconfigured for them to work.
+
+In `rulesmd.ini`:
+```ini
+[CrateTypes]
+0=MYCRATE
+
+[SOMEUNIT]                     ; VehicleType with CarriesCrate=yes, or BuildingType with CrateBeneath=yes
+CrateType=MYCRATE              ; crate this type places. Accepts the crate type's name, its Crate.TypeID,
+                               ; a vanilla crate name, or Random for a crate whose type is rolled
+                               ; when it is collected. Leave out to keep the game's own behaviour
+
+[MYCRATE]
+Crate.TypeID=21                ; integer, 21 or higher - how maps and triggers select this crate type
+
+; Collecting the crate. Set as many of these as you like, they all apply.
+Crate.Money.Min=0              ; integer, lower cash amount
+Crate.Money.Max=0              ; integer, upper cash amount, defaults to Crate.Money.Min
+Crate.SuperWeapon=             ; SuperWeaponType
+Crate.SuperWeaponAction=Charge ; enum (Charge|Grant|OneTime) - Charge makes it ready to fire, Grant
+                               ; hands it over to recharge as usual, OneTime hands over a single use
+Crate.SuperWeaponStartsReady=true ; boolean - false hands the weapon over empty, so the player has to
+                                  ; wait for it to charge. With OneTime this gives one use, earned
+Crate.Weapon=                  ; WeaponType, detonated at the crate's cell
+Crate.Units=                   ; list of VehicleTypes, spawned next to the crate
+Crate.Units.Count=1            ; integer, how many of them are spawned
+Crate.HealTargets=none         ; List of Affected House Enumeration (none|owner|allies|enemies|neutral|team|others|all)
+Crate.HealWarhead=             ; WarheadType for the healing call, defaults to [CombatDamage] -> C4Warhead
+Crate.Invulnerability.Targets=none ; List of Affected House Enumeration - who takes no damage for a while
+Crate.Invulnerability.Duration=0   ; integer, frames - how long, 15 frames are a second
+Crate.EMP.Targets=none         ; List of Affected House Enumeration - who is frozen
+Crate.EMP.Duration=0           ; integer, frames - how long, 15 frames are a second
+Crate.Veterancy.Targets=none   ; List of Affected House Enumeration - who is promoted
+Crate.Veterancy.Level=0        ; integer, 1 promotes to veteran, 2 to elite. Technos already above
+                               ; the level are left alone, and types that cannot gain experience
+                               ; (Trainable=no) are never touched
+Crate.Trigger=                 ; the id of a trigger in the map - its actions fire when the crate is
+                               ; collected, unconditionally and without consulting its events
+Crate.Reveal=false             ; boolean, removes the shroud for the collecting house, the way the
+                               ; vanilla Reveal crate does
+Crate.SpawnAtCollector=false   ; boolean, spawns Crate.Units around the collecting techno instead of
+                               ; around the crate's cell
+Crate.CloakCollector=false     ; boolean, cloaks the collecting techno. Types that cannot cloak
+                               ; (Cloakable=no) are left as they are
+Crate.Reshroud=false           ; boolean, reshrouds the map for the collecting house
+
+; Feedback. None of these change the game state.
+Crate.Anim=                    ; AnimationType, played at the crate's cell
+Crate.Sound=                   ; sound (VocClass), played at the crate's cell
+Crate.EVA=                     ; EVA (VoxClass), played for the collecting player
+
+; Where the crate may appear on its own.
+Crate.Chance=0.0               ; floating point value, 0.0-1.0 - probability that a crate whose type
+                               ; is rolled on pickup becomes this one
+Crate.CollectOnWater=true      ; boolean, false leaves the crate uncollected on water
+```
+
+```{note}
+`Crate.TypeID` is required for a crate type to be selectable at all - it is the only thing a map trigger can carry - so a crate type without one, or with one in the vanilla range, is reported on load.
+
+`Crate.HealTargets` decides who a healing crate heals, relative to the house that collected it.
+
+`Crate.Chance` is a probability, not a weight, so it does not depend on the values in your `[Powerups]` table. The sum over all crate types is how likely a rolled crate is to be a custom one, and the individual values only set the split between them - two crate types at `0.25` each make half of all rolled crates custom, one third of them each.
+
+`Crate.SuperWeaponAction=Charge` hands the weapon over first when the collecting house does not have it yet, so a crate is never wasted on a house that cannot use it. `Grant` and `OneTime` on the other hand do nothing if the house already has the weapon, and say so in the log. A handed over weapon is also added to the sidebar of the player that collected the crate, which is what makes it usable - the engine on its own only records that the house has it.
+
+There is no option to make a crate fire a super weapon by itself. The engine's launch entry points take an argument the DLL cannot supply correctly, do nothing at all for super weapon kinds outside the built-in set, and some kinds need state a crate cannot provide - an automatic shot would work for some super weapons and quietly fail for others. `OneTime` gives the player a single use to aim themselves, and `Crate.Weapon` fires an ordinary weapon at the crate's cell.
+
+Nothing pays out anything you did not ask for: a crate that cannot apply one of its effects reports it in the log rather than turning into money, and `Crate.CollectOnWater=false` leaves the crate where it is instead of substituting a reward.
+
+Some crate ideas the vanilla powerup list names but never implemented are covered by the keys above: a squad is `Crate.Units` with `Crate.Units.Count`, a drop pod landing is `Crate.Units` together with the pod's animations in `Crate.Anim`, invulnerability is `Crate.Invulnerability`, a promotion is `Crate.Veterancy`, and revealing the map is `Crate.Reveal`. An ion storm is not among them - Yuri's Revenge has no way to start one, only a leftover flag from Tiberian Sun, so a crate cannot do it.
+
+`Crate.Trigger` runs the actions of the named trigger on every machine at the same point in the game, so it stays synchronized in multiplayer. The trigger is named by its id, the string the map itself uses to reference it, not by its editor name. Its actions fire whether or not its events would have allowed it - build the trigger with no events for this purpose.
+```

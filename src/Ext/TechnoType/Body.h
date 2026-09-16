@@ -13,6 +13,7 @@
 #include <New/Type/Affiliated/DroppodTypeClass.h>
 #include <New/Type/Affiliated/TiberiumEaterTypeClass.h>
 #include <New/Type/Affiliated/CreateUnitTypeClass.h>
+#include <New/Type/CrateSource.h>
 
 class Matrix3D;
 class ParticleSystemTypeClass;
@@ -429,6 +430,10 @@ public:
 	Nullable<double> ExtraThreatCoefficient_DistanceToLastTarget;
 
 	Nullable<Powerup> DropCrate;
+
+	// Crate this type places, resolved from the CrateType key. Only used by types with
+	// CarriesCrate=yes (units) or CrateBeneath=yes (buildings). See New/Type/CrateSource.h.
+	Valueable<int> CrateType;
 
 	Valueable<double> Convert_Health_AbovePercent;
 	Valueable<double> Convert_Health_BelowPercent;
@@ -849,6 +854,7 @@ public:
 		, ExtraThreatCoefficient_DistanceToLastTarget {}
 
 		, DropCrate {}
+		, CrateType { CrateSource::Default }
 
 		, Convert_Health_AbovePercent { -1.0 }
 		, Convert_Health_BelowPercent { -1.0 }

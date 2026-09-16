@@ -14,6 +14,7 @@ void CellExt::Serialize(T& Stm)
 		.Process(this->RadSites)
 		.Process(this->RadLevels)
 		.Process(this->InfantryCount)
+		.Process(this->CustomCrateTypeID)
 		;
 }
 

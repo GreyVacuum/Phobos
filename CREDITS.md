@@ -132,6 +132,7 @@ This page lists all the individual contributions to the project by their author.
   - Customizable garrison and bunker properties
   - Disable `DamageSound` for buildings
   - Power plant damage factor
+  - Custom crate types (original 2022 implementation, reworked on top of the current extension framework)
 - **FS-21**:
   - Dump Object Info enhancements
   - `Powered.KillSpawns`
