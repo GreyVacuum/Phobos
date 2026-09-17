@@ -91,6 +91,37 @@ namespace CrateSuperWeaponAction
 	}
 }
 
+namespace
+{
+	// Resolves the value of a Direction key (Crate.Building.Direction, Crate.Units.Direction).
+	// Returns the degrees from north, clockwise, for one of the eight compass names or their long
+	// forms, -1 for Any, -3 for Random, and -2 when the value names nothing.
+	int ParseDirection(const char* pValue)
+	{
+		static const std::pair<const char*, int> Names[] =
+		{
+			{ "n", 0 }, { "north", 0 },
+			{ "ne", 45 }, { "northeast", 45 },
+			{ "e", 90 }, { "east", 90 },
+			{ "se", 135 }, { "southeast", 135 },
+			{ "s", 180 }, { "south", 180 },
+			{ "sw", 225 }, { "southwest", 225 },
+			{ "w", 270 }, { "west", 270 },
+			{ "nw", 315 }, { "northwest", 315 },
+			{ "any", -1 }, { "none", -1 }, { "all", -1 },
+			{ "random", -3 },
+		};
+
+		for (const auto& [name, degrees] : Names)
+		{
+			if (!_strcmpi(pValue, name))
+				return degrees;
+		}
+
+		return -2;
+	}
+}
+
 int CrateTypeClass::GetMoneyMin() const
 {
 	return std::abs(this->MoneyMin.Get(0));
@@ -116,10 +147,12 @@ bool CrateTypeClass::HasEffect() const
 		|| this->GivesSuperWeapon()
 		|| this->Weapon.Get() != nullptr
 		|| !this->Units.empty()
+				|| this->Building.Get() != nullptr
 		|| this->Heals()
 		|| this->Protects()
 		|| this->Freezes()
 		|| this->Promotes()
+		|| this->Cloaks()
 		|| this->FiresTrigger()
 		|| this->Reveal.Get()
 		|| this->Reshroud.Get();
@@ -192,6 +225,37 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 
 	this->Units.Read(exINI, section, "Crate.Units");
 	this->UnitsCount.Read(exINI, section, "Crate.Units.Count");
+	this->UnitsRollChances.Read(exINI, section, "Crate.Units.RollChances");
+
+	// The weights groups, the way LimboDelivery reads them: RandomWeights0 upwards name one group
+	// per draw, the bare RandomWeights is the group for every draw.
+	char tempBuffer[32];
+
+	for (size_t i = 0; ; ++i)
+	{
+		ValueableVector<int> weights;
+		_snprintf_s(tempBuffer, sizeof(tempBuffer), "Crate.Units.RandomWeights%d", i);
+		weights.Read(exINI, section, tempBuffer);
+
+		if (!weights.size())
+			break;
+
+		if (this->UnitsRandomWeightsData.size() > i)
+			this->UnitsRandomWeightsData[i] = std::move(weights);
+		else
+			this->UnitsRandomWeightsData.emplace_back(std::move(weights));
+	}
+
+	ValueableVector<int> weights;
+	weights.Read(exINI, section, "Crate.Units.RandomWeights");
+
+	if (weights.size())
+	{
+		if (this->UnitsRandomWeightsData.size())
+			this->UnitsRandomWeightsData[0] = std::move(weights);
+		else
+			this->UnitsRandomWeightsData.emplace_back(std::move(weights));
+	}
 
 	this->HealTargets.Read(exINI, section, "Crate.HealTargets");
 	this->HealWarhead.Read<true>(exINI, section, "Crate.HealWarhead");
@@ -204,6 +268,47 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 
 	this->VeterancyTargets.Read(exINI, section, "Crate.Veterancy.Targets");
 	this->VeterancyLevel.Read(exINI, section, "Crate.Veterancy.Level");
+	this->VeterancyStack.Read(exINI, section, "Crate.Veterancy.Stack");
+
+	// Radii are cell counts; a negative one is a mistake and is clamped rather than kept, because
+	// the effect code would otherwise filter out everything.
+	const auto readRadius = [&](Valueable<int>& radius, const char* pKey)
+	{
+		radius.Read(exINI, section, pKey);
+
+		if (radius.Get() < 0)
+		{
+			Debug::Log("[CrateType] [%s] has %s=%d below zero. Radii are cell counts, clamping to "
+				"0 (no limit).\n", section, pKey, radius.Get());
+
+			radius = 0;
+		}
+	};
+
+	readRadius(this->HealRadius, "Crate.Heal.Radius");
+	readRadius(this->InvulnerabilityRadius, "Crate.Invulnerability.Radius");
+	readRadius(this->EMPRadius, "Crate.EMP.Radius");
+	readRadius(this->VeterancyRadius, "Crate.Veterancy.Radius");
+
+	// Directions are named; the eight compass names plus their long forms are accepted, plus Any
+	// and Random. A value that names nothing is reported rather than guessed.
+	const auto readDirection = [&](Valueable<int>& direction, const char* pKey)
+	{
+		if (exINI.ReadString(section, pKey) && !INIClass::IsBlank(exINI.value()))
+		{
+			const int parsed = ParseDirection(exINI.value());
+
+			if (parsed == -2)
+			{
+				Debug::INIParseFailed(section, pKey, exINI.value(),
+					"Expected N, NE, E, SE, S, SW, W, NW (or the long forms), Any or Random");
+			}
+			else
+			{
+				direction = parsed;
+			}
+		}
+	};
 
 	// Triggers are named by their id, the way map actions reference them. The map owns the trigger
 	// definitions, so one that is missing right now is a rules/map mismatch and is reported.
@@ -219,7 +324,25 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->Reveal.Read(exINI, section, "Crate.Reveal");
 
 	this->SpawnAtCollector.Read(exINI, section, "Crate.SpawnAtCollector");
-	this->CloakCollector.Read(exINI, section, "Crate.CloakCollector");
+	this->UnitsLevel.Read(exINI, section, "Crate.Units.Level");
+
+	this->UnitsMinDist.Read(exINI, section, "Crate.Units.MinDist");
+	this->UnitsMaxDist.Read(exINI, section, "Crate.Units.MaxDist");
+	readDirection(this->UnitsDirection, "Crate.Units.Direction");
+	this->UnitsArc.Read(exINI, section, "Crate.Units.Arc");
+
+	this->CloakTargets.Read(exINI, section, "Crate.Cloak.Targets");
+
+	readRadius(this->CloakRadius, "Crate.Cloak.Radius");
+
+	this->Building.Read<true>(exINI, section, "Crate.Building");
+	this->BuildingBuildup.Read(exINI, section, "Crate.Building.Buildup");
+	this->BuildingMinDist.Read(exINI, section, "Crate.Building.MinDist");
+	this->BuildingMaxDist.Read(exINI, section, "Crate.Building.MaxDist");
+
+	readDirection(this->BuildingDirection, "Crate.Building.Direction");
+
+	this->BuildingArc.Read(exINI, section, "Crate.Building.Arc");
 
 	this->Reshroud.Read(exINI, section, "Crate.Reshroud");
 
@@ -236,8 +359,9 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	{
 		Debug::Log("[CrateType] [%s] sets no effect, so collecting its crate would only play the "
 			"feedback. Set at least one of Crate.Money.Min, Crate.SuperWeapon, Crate.Weapon, "
-			"Crate.Units, Crate.HealTargets, Crate.Invulnerability.Targets, Crate.EMP.Targets, "
-			"Crate.Veterancy.Targets, Crate.Trigger, Crate.Reveal or Crate.Reshroud.\n", section);
+			"Crate.Units, Crate.Building, Crate.HealTargets, Crate.Invulnerability.Targets, "
+			"Crate.EMP.Targets, Crate.Veterancy.Targets, Crate.Cloak.Targets, Crate.Trigger, "
+			"Crate.Reveal or Crate.Reshroud.\n", section);
 	}
 
 	if (!this->GivesSuperWeapon() && (hasSuperWeaponAction || !this->SuperWeaponStartsReady.Get()))
@@ -261,9 +385,59 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 			"nothing.\n", section);
 	}
 
-	if (this->UnitsCount.Get() != 1 && this->Units.empty())
+	if (!this->Units.empty() && this->UnitsCount.size() > 1
+		&& this->UnitsCount.size() != this->Units.size())
 	{
-		Debug::Log("[CrateType] [%s] sets Crate.Units.Count without Crate.Units, so it does "
+		Debug::Log("[CrateType] [%s] has Crate.Units.Count=%d entries for %d Crate.Units. Only a "
+			"single value or exactly one count per entry works; using the first value only.\n",
+			section, this->UnitsCount.size(), this->Units.size());
+	}
+
+	for (size_t i = 0; i < this->UnitsRandomWeightsData.size(); ++i)
+	{
+		if (this->UnitsRandomWeightsData[i].size() != this->Units.size())
+		{
+			Debug::Log("[CrateType] [%s] has Crate.Units.RandomWeights%d=%d entries for %d "
+				"Crate.Units. Entries beyond the list are ignored.\n", section, i,
+				this->UnitsRandomWeightsData[i].size(), this->Units.size());
+		}
+	}
+
+	for (auto& chance : this->UnitsRollChances)
+	{
+		if (chance < 0.0f || chance > 1.0f)
+		{
+			Debug::Log("[CrateType] [%s] has a Crate.Units.RollChances entry outside 0.0-1.0. "
+				"Clamping it.\n", section);
+
+			chance = std::clamp(chance, 0.0f, 1.0f);
+		}
+	}
+
+	if (this->UnitsRollChances.size() && this->UnitsCount.size() > 1)
+	{
+		Debug::Log("[CrateType] [%s] sets both Crate.Units.RollChances and a Crate.Units.Count "
+			"list. The rolls decide how many are spawned, so the counts are ignored.\n", section);
+	}
+
+	if (this->UnitsCount.size() == this->Units.size() && !this->Units.empty()
+		&& (this->UnitsRandomWeightsData.size() || this->UnitsRollChances.size()))
+	{
+		Debug::Log("[CrateType] [%s] lists one Crate.Units.Count per entry, so every entry spawns "
+			"exactly that often and the weights are not used.\n", section);
+	}
+
+	if (this->UnitsLevel.Get() > 2)
+	{
+		Debug::Log("[CrateType] [%s] has Crate.Units.Level=%d, but only 0 (rookie), 1 (veteran) "
+			"and 2 (elite) exist. Clamping.\n", section, this->UnitsLevel.Get());
+
+		this->UnitsLevel = std::clamp(this->UnitsLevel.Get(), 0, 2);
+	}
+
+	if (this->UnitsLevel.Get() > 0 && this->Units.empty())
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Units.Level without Crate.Units, so it does "
 			"nothing.\n", section);
 	}
 
@@ -298,9 +472,59 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 
 	if (this->SpawnAtCollector.Get() && this->Units.empty())
 	{
-		Debug::Log("[CrateType] [%s] sets Crate.SpawnAtCollector without Crate.Units, so it does "
-			"nothing.\n", section);
+		Debug::Log("[CrateType] [%s] sets Crate.SpawnAtCollector without Crate.Units or Crate.Building, "
+			"so it does nothing.\n", section);
 	}
+
+	if (this->CloakRadius.Get() > 0 && !this->Cloaks())
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Cloak.Radius without Crate.Cloak.Targets, so it "
+			"does nothing.\n", section);
+	}
+
+	// The placement range keys (Crate.Building, Crate.Units) share their checks: distances are
+	// cell counts and are clamped, an inverted range is swapped, and an arc width is clamped and
+	// only does something with a direction to narrow.
+	const auto checkPlacementRange = [&](Valueable<int>& min, Valueable<int>& max,
+		Valueable<int>& direction, Nullable<int>& arc, const char* pPrefix)
+	{
+		if (min.Get() < 0 || max.Get() < 0)
+		{
+			Debug::Log("[CrateType] [%s] has a negative %sMinDist or %sMaxDist. Distances are "
+				"cell counts, clamping to 0.\n", section, pPrefix, pPrefix);
+
+			min = std::max(min.Get(), 0);
+			max = std::max(max.Get(), 0);
+		}
+
+		if (min.Get() > max.Get())
+		{
+			Debug::Log("[CrateType] [%s] has %sMinDist=%d above %sMaxDist=%d. Swapping them.\n",
+				section, pPrefix, min.Get(), pPrefix, max.Get());
+
+			std::swap(min, max);
+		}
+
+		if (arc.isset() && (arc.Get() < 1 || arc.Get() > 360))
+		{
+			Debug::Log("[CrateType] [%s] has %sArc=%d outside 1-360. Clamping.\n",
+				section, pPrefix, arc.Get());
+
+			arc = std::clamp(arc.Get(), 1, 360);
+		}
+
+		if (arc.isset() && direction.Get() < 0)
+		{
+			Debug::Log("[CrateType] [%s] sets %sArc without %sDirection, so it does nothing.\n",
+				section, pPrefix, pPrefix);
+		}
+	};
+
+	checkPlacementRange(this->BuildingMinDist, this->BuildingMaxDist, this->BuildingDirection,
+		this->BuildingArc, "Crate.Building.");
+
+	checkPlacementRange(this->UnitsMinDist, this->UnitsMaxDist, this->UnitsDirection,
+		this->UnitsArc, "Crate.Units.");
 
 	if (this->Reveal.Get() && this->Reshroud.Get())
 	{
@@ -330,6 +554,8 @@ void CrateTypeClass::Serialize(T& Stm)
 		.Process(this->Weapon)
 		.Process(this->Units)
 		.Process(this->UnitsCount)
+		.Process(this->UnitsRollChances)
+		.Process(this->UnitsRandomWeightsData)
 		.Process(this->HealTargets)
 		.Process(this->HealWarhead)
 		.Process(this->InvulnerabilityTargets)
@@ -338,10 +564,27 @@ void CrateTypeClass::Serialize(T& Stm)
 		.Process(this->EMPDuration)
 		.Process(this->VeterancyTargets)
 		.Process(this->VeterancyLevel)
+		.Process(this->VeterancyStack)
+		.Process(this->HealRadius)
+		.Process(this->InvulnerabilityRadius)
+		.Process(this->EMPRadius)
+		.Process(this->VeterancyRadius)
 		.Process(this->Trigger)
 		.Process(this->Reveal)
 		.Process(this->SpawnAtCollector)
-		.Process(this->CloakCollector)
+		.Process(this->UnitsLevel)
+		.Process(this->UnitsMinDist)
+		.Process(this->UnitsMaxDist)
+		.Process(this->UnitsDirection)
+		.Process(this->UnitsArc)
+		.Process(this->CloakTargets)
+		.Process(this->CloakRadius)
+		.Process(this->Building)
+		.Process(this->BuildingBuildup)
+		.Process(this->BuildingMinDist)
+		.Process(this->BuildingMaxDist)
+		.Process(this->BuildingDirection)
+		.Process(this->BuildingArc)
 		.Process(this->Reshroud)
 		.Process(this->Anim)
 		.Process(this->Sound)

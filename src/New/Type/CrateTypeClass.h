@@ -5,9 +5,10 @@
 #include <Utilities/TemplateDef.h>
 
 class AnimTypeClass;
+class BuildingTypeClass;
 class SuperWeaponTypeClass;
+class TechnoTypeClass;
 class TriggerTypeClass;
-class UnitTypeClass;
 class VocClass;
 class VoxClass;
 class WarheadTypeClass;
@@ -62,8 +63,22 @@ public:
 
 	Valueable<WeaponTypeClass*> Weapon;
 
-	ValueableVector<UnitTypeClass*> Units;
-	Valueable<int> UnitsCount;
+	// Vehicles, infantry or aircraft, spawned next to the crate. The entry's type decides how it
+	// is spawned: aircraft come out at cruise height.
+	ValueableVector<TechnoTypeClass*> Units;
+
+	// How many of them to spawn. A single value draws that many entries at random; a list of
+	// exactly the Units' length spawns each entry that exact number of times instead.
+	ValueableVector<int> UnitsCount;
+
+	// The weighted rolls system, the way super weapon LimboDelivery uses it. RollChances holds one
+	// independent 0-1 roll per draw - a roll above the chance is skipped - and each surviving draw
+	// picks its entry with the matching weights group: RandomWeights for every draw, or
+	// RandomWeights0 upwards, one group per draw, falling back to the last group that is present.
+	// Without RollChances, the Units.Count draws all use the first group. When Units.Count lists
+	// one count per entry, none of this applies.
+	ValueableVector<float> UnitsRollChances;
+	std::vector<ValueableVector<int>> UnitsRandomWeightsData;
 
 	Valueable<AffectedHouse> HealTargets;
 	Valueable<WarheadTypeClass*> HealWarhead;
@@ -82,6 +97,18 @@ public:
 	Valueable<AffectedHouse> VeterancyTargets;
 	Valueable<int> VeterancyLevel;
 
+	// When set, collecting the crate again adds to the experience the affected technos already
+	// have instead of each promotion being capped at the level, so two Level=1 collections make an
+	// elite. The sum is clamped by [General] -> VeteranCap as usual.
+	Valueable<bool> VeterancyStack;
+
+	// Limits the audience of the matching filtered effect to this many cells around the crate's
+	// cell. 0, the default, means the effect is not limited.
+	Valueable<int> HealRadius;
+	Valueable<int> InvulnerabilityRadius;
+	Valueable<int> EMPRadius;
+	Valueable<int> VeterancyRadius;
+
 	// The map trigger whose actions run when the crate is collected. It is named by its id as the
 	// map references it, and its actions fire unconditionally - its events are not consulted.
 	Valueable<TriggerTypeClass*> Trigger;
@@ -92,8 +119,46 @@ public:
 	// Spawns Crate.Units around the collecting techno instead of around the crate's cell.
 	Valueable<bool> SpawnAtCollector;
 
-	// Cloaks the collecting techno. Types that cannot cloak are left as they are.
-	Valueable<bool> CloakCollector;
+	// The rank Crate.Units come out with. 0 rookie, 1 veteran, 2 elite.
+	Valueable<int> UnitsLevel;
+
+	// How far from the base cell the entries of Crate.Units are placed, in cells, searched near to
+	// far - the same options Crate.Building uses. Every entry gets a cell of its own.
+	Valueable<int> UnitsMinDist;
+	Valueable<int> UnitsMaxDist;
+
+	// Narrows the Crate.Units placement search to a sector relative to the base cell, stored as
+	// degrees from north, clockwise; -1 means any direction, -3 means each ring is walked in a
+	// shuffled order so the entries land in random directions. Parsed from Crate.Units.Direction.
+	Valueable<int> UnitsDirection;
+
+	// The width of the accepted Crate.Units sector, in degrees. Only meaningful with a direction.
+	Nullable<int> UnitsArc;
+
+	// Cloaks technos the collecting house is allowed to affect. Types that cannot cloak are left
+	// as they are.
+	Valueable<AffectedHouse> CloakTargets;
+	Valueable<int> CloakRadius;
+
+	// A building spawned next to the crate for the collecting house.
+	Valueable<BuildingTypeClass*> Building;
+
+	// When set, the building plays its buildup sequence and finishes constructing normally
+	// instead of appearing completed at once.
+	Valueable<bool> BuildingBuildup;
+
+	// How far from the base cell the building may be placed, in cells. The nearest cell that
+	// passes every placement check within the range wins.
+	Valueable<int> BuildingMinDist;
+	Valueable<int> BuildingMaxDist;
+
+	// Narrows the placement search to a sector relative to the base cell. Stored as degrees from
+	// north, clockwise (N=0, E=90, S=180, W=270); -1 means any direction. The names are parsed
+	// from Crate.Building.Direction.
+	Valueable<int> BuildingDirection;
+
+	// The width of the accepted direction sector, in degrees. Only meaningful with a direction.
+	Nullable<int> BuildingArc;
 
 	Valueable<bool> Reshroud;
 
@@ -115,7 +180,9 @@ public:
 		, SuperWeaponStartsReady { true }
 		, Weapon { nullptr }
 		, Units { }
-		, UnitsCount { 1 }
+		, UnitsCount { }
+		, UnitsRollChances { }
+		, UnitsRandomWeightsData { }
 		, HealTargets { AffectedHouse::None }
 		, HealWarhead { nullptr }
 		, InvulnerabilityTargets { AffectedHouse::None }
@@ -124,10 +191,27 @@ public:
 		, EMPDuration { 0 }
 		, VeterancyTargets { AffectedHouse::None }
 		, VeterancyLevel { 0 }
+		, VeterancyStack { false }
+		, HealRadius { 0 }
+		, InvulnerabilityRadius { 0 }
+		, EMPRadius { 0 }
+		, VeterancyRadius { 0 }
 		, Trigger { nullptr }
 		, Reveal { false }
 		, SpawnAtCollector { false }
-		, CloakCollector { false }
+		, UnitsLevel { 0 }
+		, UnitsMinDist { 0 }
+		, UnitsMaxDist { 10 }
+		, UnitsDirection { -1 }
+		, UnitsArc { }
+		, CloakTargets { AffectedHouse::None }
+		, CloakRadius { 0 }
+		, Building { nullptr }
+		, BuildingBuildup { false }
+		, BuildingMinDist { 0 }
+		, BuildingMaxDist { 12 }
+		, BuildingDirection { -1 }
+		, BuildingArc { }
 		, Reshroud { false }
 		, Anim { nullptr }
 		, Sound { -1 }
@@ -142,6 +226,7 @@ public:
 	bool Protects() const { return this->InvulnerabilityTargets.Get() != AffectedHouse::None; }
 	bool Freezes() const { return this->EMPTargets.Get() != AffectedHouse::None; }
 	bool Promotes() const { return this->VeterancyTargets.Get() != AffectedHouse::None; }
+	bool Cloaks() const { return this->CloakTargets.Get() != AffectedHouse::None; }
 	bool FiresTrigger() const { return this->Trigger.Get() != nullptr; }
 
 	int GetMoneyMin() const;
