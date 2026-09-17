@@ -1,5 +1,6 @@
 #include <AircraftClass.h>
 #include <AnimClass.h>
+#include <AnimTypeClass.h>
 #include <HouseClass.h>
 #include <InfantryClass.h>
 #include <InfantryTypeClass.h>
@@ -241,6 +242,14 @@ namespace CrateHelpers
 		return false;
 	}
 
+	// The radius a filtered effect searches around the crate's cell: the crate's own setting, or
+	// the [General] -> CrateRadius default when the crate does not set one.
+	int ResolveRadius(const Nullable<int>& key)
+	{
+		return key.isset() ? std::max(key.Get(), 0)
+			: std::max(RulesClass::Instance->CrateRadius, 0);
+	}
+
 	// Heals every techno the collecting house is allowed to affect, as picked by Crate.HealTargets.
 	// Only the health that is actually missing is requested, so nothing is healed past full.
 	void HealAffectedTargets(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector)
@@ -251,7 +260,7 @@ namespace CrateHelpers
 			return;
 
 		auto const pHealWarhead = pCrateType->GetHealWarhead();
-		const int radius = std::max(pCrateType->HealRadius.Get(), 0);
+		const int radius = ResolveRadius(pCrateType->HealRadius);
 
 		ForEachAffectedTechno(pCrateType->HealTargets.Get(), pCollectorHouse, pCell, radius, [&](TechnoClass* pTechno)
 		{
@@ -282,7 +291,7 @@ namespace CrateHelpers
 	void ProtectAffectedTargets(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector)
 	{
 		auto const duration = pCrateType->InvulnerabilityDuration.Get();
-		const int radius = std::max(pCrateType->InvulnerabilityRadius.Get(), 0);
+		const int radius = ResolveRadius(pCrateType->InvulnerabilityRadius);
 
 		ForEachAffectedTechno(pCrateType->InvulnerabilityTargets.Get(), pCollector->Owner, pCell, radius, [duration](TechnoClass* pTechno)
 		{
@@ -296,7 +305,7 @@ namespace CrateHelpers
 	void FreezeAffectedTargets(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector)
 	{
 		auto const duration = pCrateType->EMPDuration.Get();
-		const int radius = std::max(pCrateType->EMPRadius.Get(), 0);
+		const int radius = ResolveRadius(pCrateType->EMPRadius);
 
 		ForEachAffectedTechno(pCrateType->EMPTargets.Get(), pCollector->Owner, pCell, radius, [duration](TechnoClass* pTechno)
 		{
@@ -309,7 +318,7 @@ namespace CrateHelpers
 	// left as they are, since the engine's cloak state machine has nothing to work with on them.
 	void CloakAffectedTargets(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector)
 	{
-		const int radius = std::max(pCrateType->CloakRadius.Get(), 0);
+		const int radius = ResolveRadius(pCrateType->CloakRadius);
 
 		ForEachAffectedTechno(pCrateType->CloakTargets.Get(), pCollector->Owner, pCell, radius, [](TechnoClass* pTechno)
 		{
@@ -327,7 +336,7 @@ namespace CrateHelpers
 	{
 		const int level = std::clamp(pCrateType->VeterancyLevel.Get(), 0, 2);
 		const bool stack = pCrateType->VeterancyStack.Get();
-		const int radius = std::max(pCrateType->VeterancyRadius.Get(), 0);
+		const int radius = ResolveRadius(pCrateType->VeterancyRadius);
 		int promoted = 0;
 
 		ForEachAffectedTechno(pCrateType->VeterancyTargets.Get(), pCollector->Owner, pCell, radius, [&](TechnoClass* pTechno)
@@ -949,7 +958,33 @@ namespace CrateHelpers
 		CoordStruct coords = CellClass::Cell2Coord(pCell->MapCoords,
 			MapClass::Instance.GetCellFloorHeight(CellClass::Cell2Coord(pCell->MapCoords)));
 
-		if (auto const pAnimType = pCrateType->Anim.Get())
+		// The vanilla crate type whose feedback this crate borrows, if any. The explicit keys
+		// always win; the borrowed type only fills what they leave unset. The pickup animation
+		// comes from the engine's own per-type table, and the vanilla crate code plays an EVA
+		// line for exactly three types - the upgrade ones.
+		AnimTypeClass* pDefaultAnimType = nullptr;
+		const char* pDefaultEVA = nullptr;
+
+		if (pCrateType->DefaultRemindType.Get() >= 0)
+		{
+			const int type = pCrateType->DefaultRemindType.Get();
+			const int animIndex = Powerups::Anims[type];
+
+			if (animIndex >= 0 && animIndex < AnimTypeClass::Array.Count)
+				pDefaultAnimType = AnimTypeClass::Array[animIndex];
+
+			if (!_strcmpi(Powerups::Effects[type], "Armor"))
+				pDefaultEVA = "EVA_UnitArmorUpgraded";
+			else if (!_strcmpi(Powerups::Effects[type], "Speed"))
+				pDefaultEVA = "EVA_UnitSpeedUpgraded";
+			else if (!_strcmpi(Powerups::Effects[type], "FirePower"))
+				pDefaultEVA = "EVA_UnitFirePowerUpgraded";
+		}
+
+		auto const pAnimType = pCrateType->Anim.Get()
+			? pCrateType->Anim.Get() : pDefaultAnimType;
+
+		if (pAnimType)
 		{
 			if (auto const pAnim = GameCreate<AnimClass>(pAnimType, coords))
 				pAnim->Owner = pHouse;
@@ -960,6 +995,8 @@ namespace CrateHelpers
 
 		if (pCrateType->EVA.Get() >= 0 && pHouse && pHouse->IsCurrentPlayer())
 			VoxClass::PlayIndex(pCrateType->EVA.Get());
+		else if (pDefaultEVA && pHouse && pHouse->IsCurrentPlayer())
+			VoxClass::Play(pDefaultEVA);
 	}
 }
 

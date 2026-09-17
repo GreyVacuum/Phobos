@@ -103,11 +103,12 @@ public:
 	Valueable<bool> VeterancyStack;
 
 	// Limits the audience of the matching filtered effect to this many cells around the crate's
-	// cell. 0, the default, means the effect is not limited.
-	Valueable<int> HealRadius;
-	Valueable<int> InvulnerabilityRadius;
-	Valueable<int> EMPRadius;
-	Valueable<int> VeterancyRadius;
+	// cell. Unset means the crate follows the [General] -> CrateRadius default; an explicit 0
+	// means the effect is not limited at all.
+	Nullable<int> HealRadius;
+	Nullable<int> InvulnerabilityRadius;
+	Nullable<int> EMPRadius;
+	Nullable<int> VeterancyRadius;
 
 	// The map trigger whose actions run when the crate is collected. It is named by its id as the
 	// map references it, and its actions fire unconditionally - its events are not consulted.
@@ -138,7 +139,7 @@ public:
 	// Cloaks technos the collecting house is allowed to affect. Types that cannot cloak are left
 	// as they are.
 	Valueable<AffectedHouse> CloakTargets;
-	Valueable<int> CloakRadius;
+	Nullable<int> CloakRadius;
 
 	// A building spawned next to the crate for the collecting house.
 	Valueable<BuildingTypeClass*> Building;
@@ -167,6 +168,12 @@ public:
 	ValueableIdx<VocClass> Sound;
 	ValueableIdx<VoxClass> EVA;
 
+	// Names one of the vanilla crate types, the way the [Powerups] list names them - Unit, Money,
+	// Heal, Armor, Speed, FirePower, Veteran, ICBM and so on. The crate then plays that type's
+	// pickup animation, and for the three upgrade crates its EVA line, for anything the explicit
+	// keys above leave unset. Empty by default.
+	Valueable<int> DefaultRemindType;
+
 	// Where the crate may appear on its own.
 	Valueable<double> Chance;
 	Valueable<bool> CollectOnWater;
@@ -192,10 +199,10 @@ public:
 		, VeterancyTargets { AffectedHouse::None }
 		, VeterancyLevel { 0 }
 		, VeterancyStack { false }
-		, HealRadius { 0 }
-		, InvulnerabilityRadius { 0 }
-		, EMPRadius { 0 }
-		, VeterancyRadius { 0 }
+		, HealRadius { }
+		, InvulnerabilityRadius { }
+		, EMPRadius { }
+		, VeterancyRadius { }
 		, Trigger { nullptr }
 		, Reveal { false }
 		, SpawnAtCollector { false }
@@ -205,7 +212,7 @@ public:
 		, UnitsDirection { -1 }
 		, UnitsArc { }
 		, CloakTargets { AffectedHouse::None }
-		, CloakRadius { 0 }
+		, CloakRadius { }
 		, Building { nullptr }
 		, BuildingBuildup { false }
 		, BuildingMinDist { 0 }
@@ -216,6 +223,7 @@ public:
 		, Anim { nullptr }
 		, Sound { -1 }
 		, EVA { -1 }
+		, DefaultRemindType { -1 }
 		, Chance { 0.0 }
 		, CollectOnWater { true }
 	{ }

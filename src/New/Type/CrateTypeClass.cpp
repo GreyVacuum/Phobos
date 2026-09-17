@@ -270,18 +270,19 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->VeterancyLevel.Read(exINI, section, "Crate.Veterancy.Level");
 	this->VeterancyStack.Read(exINI, section, "Crate.Veterancy.Stack");
 
-	// Radii are cell counts; a negative one is a mistake and is clamped rather than kept, because
-	// the effect code would otherwise filter out everything.
-	const auto readRadius = [&](Valueable<int>& radius, const char* pKey)
+	// Radii are cell counts. Leaving one unset follows the [General] -> CrateRadius default; an
+	// explicit 0 means no limit; a negative one is a mistake and falls back to the default rather
+	// than being kept, because the effect code would otherwise filter out everything.
+	const auto readRadius = [&](Nullable<int>& radius, const char* pKey)
 	{
 		radius.Read(exINI, section, pKey);
 
-		if (radius.Get() < 0)
+		if (radius.isset() && radius.Get() < 0)
 		{
-			Debug::Log("[CrateType] [%s] has %s=%d below zero. Radii are cell counts, clamping to "
-				"0 (no limit).\n", section, pKey, radius.Get());
+			Debug::Log("[CrateType] [%s] has %s=%d below zero. Radii are cell counts, resetting it "
+				"to the [General] -> CrateRadius default.\n", section, pKey, radius.Get());
 
-			radius = 0;
+			radius.Reset();
 		}
 	};
 
@@ -349,6 +350,29 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->Anim.Read<true>(exINI, section, "Crate.Anim");
 	this->Sound.Read(exINI, section, "Crate.Sound");
 	this->EVA.Read(exINI, section, "Crate.EVA");
+
+	// The vanilla crate type whose feedback this crate borrows. Named the way the [Powerups]
+	// list names its effects; anything else is reported rather than guessed.
+	if (exINI.ReadString(section, "Crate.DefaultRemindType") && !INIClass::IsBlank(exINI.value()))
+	{
+		bool found = false;
+
+		for (int i = 0; i < 19; ++i)
+		{
+			if (!_strcmpi(exINI.value(), Powerups::Effects[i]))
+			{
+				this->DefaultRemindType = i;
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			Debug::INIParseFailed(section, "Crate.DefaultRemindType", exINI.value(),
+				"Expected one of the vanilla crate effect names");
+		}
+	}
 
 	this->Chance.Read(exINI, section, "Crate.Chance");
 	this->CollectOnWater.Read(exINI, section, "Crate.CollectOnWater");
@@ -589,6 +613,7 @@ void CrateTypeClass::Serialize(T& Stm)
 		.Process(this->Anim)
 		.Process(this->Sound)
 		.Process(this->EVA)
+		.Process(this->DefaultRemindType)
 		.Process(this->Chance)
 		.Process(this->CollectOnWater)
 		;

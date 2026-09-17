@@ -3975,21 +3975,21 @@ Crate.Building.Arc=45          ; integer, degrees - the width of the accepted se
                                ; a direction; 45 accepts the 45 degrees around it
 Crate.HealTargets=none         ; List of Affected House Enumeration (none|owner|allies|enemies|neutral|team|others|all)
 Crate.HealWarhead=             ; WarheadType for the healing call, defaults to [CombatDamage] -> C4Warhead
-Crate.Heal.Radius=0            ; integer, cells - limits the healing to this many cells around the
-                               ; crate's cell. 0, the default, means no limit
+Crate.Heal.Radius=             ; integer, cells - limits the healing to this many cells around the
+                               ; crate's cell. An explicit 0 means no limit
 Crate.Invulnerability.Targets=none ; List of Affected House Enumeration - who takes no damage for a while
 Crate.Invulnerability.Duration=0   ; integer, frames - how long, 15 frames are a second
-Crate.Invulnerability.Radius=0 ; integer, cells - limits who is protected. 0 means no limit
+Crate.Invulnerability.Radius=  ; integer, cells - limits who is protected. 0 means no limit
 Crate.EMP.Targets=none         ; List of Affected House Enumeration - who is frozen
 Crate.EMP.Duration=0           ; integer, frames - how long, 15 frames are a second
-Crate.EMP.Radius=0             ; integer, cells - limits who is frozen. 0 means no limit
+Crate.EMP.Radius=              ; integer, cells - limits who is frozen. 0 means no limit
 Crate.Veterancy.Targets=none   ; List of Affected House Enumeration - who is promoted
 Crate.Veterancy.Level=0        ; integer, 1 promotes to veteran, 2 to elite. Technos already above
                                ; the level are left alone (unless Crate.Veterancy.Stack is set)
 Crate.Veterancy.Stack=false    ; boolean - when set, collecting the crate again adds to the existing
                                ; experience instead of capping at the level, so two Level=1
                                ; collections make an elite
-Crate.Veterancy.Radius=0       ; integer, cells - limits who is promoted. 0 means no limit
+Crate.Veterancy.Radius=        ; integer, cells - limits who is promoted. 0 means no limit
 Crate.Trigger=                 ; the id of a trigger in the map - its actions fire when the crate is
                                ; collected, unconditionally and without consulting its events
 Crate.Reveal=false             ; boolean, removes the shroud for the collecting house, the way the
@@ -4005,6 +4005,12 @@ Crate.Reshroud=false           ; boolean, reshrouds the map for the collecting h
 Crate.Anim=                    ; AnimationType, played at the crate's cell
 Crate.Sound=                   ; sound (VocClass), played at the crate's cell
 Crate.EVA=                     ; EVA (VoxClass), played for the collecting player
+Crate.DefaultRemindType=       ; the name of a vanilla crate effect from [Powerups] - Unit, Money,
+                               ; Heal, Armor, Speed, FirePower, Veteran, ICBM and so on. Plays
+                               ; that type's pickup animation, and its EVA line for the three
+                               ; upgrade crates, for anything the keys above leave unset. The
+                               ; explicit keys always win. Note the vanilla pickup sounds are
+                               ; part of the animations themselves
 
 ; Where the crate may appear on its own.
 Crate.Chance=0.0               ; floating point value, 0.0-1.0 - probability that a crate whose type
