@@ -484,7 +484,7 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	}
 
 	if (!this->Building.Get() && (this->BuildingBuildup.Get()
-		|| this->BuildingMinDist.Get() != 0 || this->BuildingMaxDist.Get() != 12
+		|| this->BuildingMinDist.Get() != 1 || this->BuildingMaxDist.Get() != 12
 		|| this->BuildingDirection.Get() >= 0 || this->BuildingArc.isset()))
 	{
 		Debug::Log("[CrateType] [%s] sets Crate.Building settings without Crate.Building, so they "

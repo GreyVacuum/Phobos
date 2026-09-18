@@ -115,8 +115,9 @@ Crate.Anim=CRATEBURST          ; 采集时的动画
 | `Crate.Units.RandomWeights` | 整数列表 | 空 | 每个 `Crate.Units` 条目一个权重，仅在随机抽取时生效（不放大数量） |
 | `Crate.Units.RandomWeights0..N` | 整数列表 | 空 | 多组权重，配合 `RollChances` 使用，第 N 次抽取用第 N 组（越界回退最后一组） |
 | `Crate.Units.RollChances` | 浮点列表 | 空 | 0.0–1.0，每项一次独立掷骰，**通过才生成一个单位**；此时生成数量由本键决定，`Crate.Units.Count` 被忽略 |
-| `Crate.Units.MinDist` / `.MaxDist` | 整数 | 0 / 10 | 生成位置相对基准格的最近 / 最远格数 |
-| `Crate.Units.Direction` | 枚举 | `Any` | `N` `NE` `E` `SE` `S` `SW` `W` `NW`（或全称）、`Any`、`Random`（每环乱序抽） |
+| `Crate.Units.MinDist` | 整数 | 1 | 相对基准格的最近格数（默认 1 = 不落在箱子/采集者所在格） |
+| `Crate.Units.MaxDist` | 整数 | 10 | 相对基准格的最远搜索格数 |
+| `Crate.Units.Direction` | 枚举 | `Random` | `N` `NE` `E` `SE` `S` `SW` `W` `NW`（或全称）、`Any`（全方向固定顺序）、`Random`（每环乱序，默认） |
 | `Crate.Units.Arc` | 整数 | 45 | 方向扇区宽度（度），±Arc/2；仅在有 Direction 时有意义 |
 | `Crate.SpawnAtCollector` | 布尔 | false | true = 以**采集者所在格**为基准（而非箱格） |
 
@@ -134,9 +135,9 @@ Crate.Anim=CRATEBURST          ; 采集时的动画
 |---|---|---|---|
 | `Crate.Building` | BuildingType | 空 | 在箱子旁为采集方建成一栋建筑 |
 | `Crate.Building.Buildup` | 布尔 | false | false = 立即完工；true = 播放施工动画后正常完成 |
-| `Crate.Building.MinDist` | 整数 | 0 | 落点距离基准格的最近格数 |
+| `Crate.Building.MinDist` | 整数 | 1 | 落点距离基准格的最近格数（默认 1 = 不盖在箱子所在格） |
 | `Crate.Building.MaxDist` | 整数 | 12 | 落点距离基准格的最远格数 |
-| `Crate.Building.Direction` | 枚举 | `Any` | 同 `Crate.Units.Direction`（含 `Random`） |
+| `Crate.Building.Direction` | 枚举 | `Random` | 同 `Crate.Units.Direction`（默认随机方向） |
 | `Crate.Building.Arc` | 整数 | 45 | 扇区宽度（度） |
 
 选址使用**引擎自带的放置校验**并额外检查整个地基格的占用，因此**不会压炸车辆、不会顶开步兵**。放不下时只写日志，不硬放。

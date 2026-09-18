@@ -3949,11 +3949,11 @@ Crate.Units.RollChances=       ; list of floats, 0.0-1.0 - one independent roll 
                                ; Units.Count
 Crate.Units.Level=0            ; integer, the rank all of the spawned units come out with - 0 rookie,
                                ; 1 veteran, 2 elite
-Crate.Units.MinDist=0          ; integer, cells - how close to the base cell the units may be placed
+Crate.Units.MinDist=1          ; integer, cells - how close to the base cell the units may be placed
 Crate.Units.MaxDist=10         ; integer, cells - how far from the base cell to search for spots.
                                ; Every entry gets a cell of its own, so nothing is crushed or
                                ; displaced
-Crate.Units.Direction=Any      ; N, NE, E, SE, S, SW, W, NW (or the long forms) - narrows the search
+Crate.Units.Direction=Random   ; N, NE, E, SE, S, SW, W, NW (or the long forms) - narrows the search
                                ; to that compass sector relative to the base cell. Random checks
                                ; each ring in a shuffled order so the entries land in random
                                ; directions. Any searches all
@@ -3965,9 +3965,9 @@ Crate.Building=                ; BuildingType, built next to the crate for the c
                                ; every foundation cell, so nothing gets crushed or displaced
 Crate.Building.Buildup=false   ; boolean - when set, the building plays its buildup sequence and
                                ; finishes constructing normally instead of appearing completed
-Crate.Building.MinDist=0       ; integer, cells - how close to the base cell the building may land
+Crate.Building.MinDist=1       ; integer, cells - how close to the base cell the building may land
 Crate.Building.MaxDist=12      ; integer, cells - how far from the base cell to search for a spot
-Crate.Building.Direction=Any   ; N, NE, E, SE, S, SW, W, NW (or the long forms) - narrows the search
+Crate.Building.Direction=Random ; N, NE, E, SE, S, SW, W, NW (or the long forms) - narrows the search
                                ; to that compass sector relative to the base cell. Random checks
                                ; each ring's cells in a shuffled order, so the building lands in a
                                ; random direction. Any searches all of them in fixed order

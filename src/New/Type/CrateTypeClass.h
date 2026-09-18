@@ -140,13 +140,15 @@ public:
 	Valueable<int> UnitsLevel;
 
 	// How far from the base cell the entries of Crate.Units are placed, in cells, searched near to
-	// far - the same options Crate.Building uses. Every entry gets a cell of its own.
+	// far - the same options Crate.Building uses. Every entry gets a cell of its own. The nearest
+	// cell searched is one away by default, so nothing lands on the crate or the collector.
 	Valueable<int> UnitsMinDist;
 	Valueable<int> UnitsMaxDist;
 
 	// Narrows the Crate.Units placement search to a sector relative to the base cell, stored as
 	// degrees from north, clockwise; -1 means any direction, -3 means each ring is walked in a
 	// shuffled order so the entries land in random directions. Parsed from Crate.Units.Direction.
+	// The default is -3, so entries spread into random directions unless a sector is asked for.
 	Valueable<int> UnitsDirection;
 
 	// The width of the accepted Crate.Units sector, in degrees. Only meaningful with a direction.
@@ -208,13 +210,15 @@ public:
 	Valueable<bool> BuildingBuildup;
 
 	// How far from the base cell the building may be placed, in cells. The nearest cell that
-	// passes every placement check within the range wins.
+	// passes every placement check within the range wins. The nearest cell searched is one away
+	// by default, so the building never lands on the crate's own cell.
 	Valueable<int> BuildingMinDist;
 	Valueable<int> BuildingMaxDist;
 
 	// Narrows the placement search to a sector relative to the base cell. Stored as degrees from
-	// north, clockwise (N=0, E=90, S=180, W=270); -1 means any direction. The names are parsed
-	// from Crate.Building.Direction.
+	// north, clockwise (N=0, E=90, S=180, W=270); -1 means any direction, and -3 - the default -
+	// walks each ring in a shuffled order, so the building lands in a random direction. The names
+	// are parsed from Crate.Building.Direction.
 	Valueable<int> BuildingDirection;
 
 	// The width of the accepted direction sector, in degrees. Only meaningful with a direction.
@@ -274,9 +278,9 @@ public:
 		, Reveal { false }
 		, SpawnAtCollector { false }
 		, UnitsLevel { 0 }
-		, UnitsMinDist { 0 }
+		, UnitsMinDist { 1 }
 		, UnitsMaxDist { 10 }
-		, UnitsDirection { -1 }
+		, UnitsDirection { -3 }
 		, UnitsArc { }
 		, CloakTargets { AffectedHouse::None }
 		, CloakRadius { }
@@ -305,9 +309,9 @@ public:
 		, SpeedDisallowTypes { }
 		, Building { nullptr }
 		, BuildingBuildup { false }
-		, BuildingMinDist { 0 }
+		, BuildingMinDist { 1 }
 		, BuildingMaxDist { 12 }
-		, BuildingDirection { -1 }
+		, BuildingDirection { -3 }
 		, BuildingArc { }
 		, Reshroud { false }
 		, Anim { nullptr }
