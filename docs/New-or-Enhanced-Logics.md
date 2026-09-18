@@ -3976,13 +3976,19 @@ Crate.Building.Arc=45          ; integer, degrees - the width of the accepted se
 Crate.HealTargets=none         ; List of Affected House Enumeration (none|owner|allies|enemies|neutral|team|others|all)
 Crate.HealWarhead=             ; WarheadType for the healing call, defaults to [CombatDamage] -> C4Warhead
 Crate.Heal.Radius=             ; integer, cells - limits the healing to this many cells around the
+Crate.Heal.AllowTypes=        ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Heal.DisallowTypes=     ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
                                ; crate's cell. An explicit 0 means no limit
 Crate.Invulnerability.Targets=none ; List of Affected House Enumeration - who takes no damage for a while
 Crate.Invulnerability.Duration=0   ; integer, frames - how long, 15 frames are a second
 Crate.Invulnerability.Radius=  ; integer, cells - limits who is protected. 0 means no limit
+Crate.Invulnerability.AllowTypes= ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Invulnerability.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
 Crate.EMP.Targets=none         ; List of Affected House Enumeration - who is frozen
 Crate.EMP.Duration=0           ; integer, frames - how long, 15 frames are a second
 Crate.EMP.Radius=              ; integer, cells - limits who is frozen. 0 means no limit
+Crate.EMP.AllowTypes=         ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.EMP.DisallowTypes=      ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
 Crate.Veterancy.Targets=none   ; List of Affected House Enumeration - who is promoted
 Crate.Veterancy.Level=0        ; integer, 1 promotes to veteran, 2 to elite. Technos already above
                                ; the level are left alone (unless Crate.Veterancy.Stack is set)
@@ -3990,6 +3996,8 @@ Crate.Veterancy.Stack=false    ; boolean - when set, collecting the crate again 
                                ; experience instead of capping at the level, so two Level=1
                                ; collections make an elite
 Crate.Veterancy.Radius=        ; integer, cells - limits who is promoted. 0 means no limit
+Crate.Veterancy.AllowTypes=   ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Veterancy.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
 Crate.Trigger=                 ; the id of a trigger in the map - its actions fire when the crate is
                                ; collected, unconditionally and without consulting its events
 Crate.Reveal=false             ; boolean, removes the shroud for the collecting house, the way the
@@ -3998,7 +4006,41 @@ Crate.SpawnAtCollector=false   ; boolean, spawns Crate.Units and Crate.Building 
                                ; techno instead of around the crate's cell
 Crate.Cloak.Targets=none       ; List of Affected House Enumeration - who is cloaked. Types that
                                ; cannot cloak (Cloakable=no) are left as they are
-Crate.Cloak.Radius=0           ; integer, cells - limits who is cloaked. 0 means no limit
+Crate.Cloak.Radius=           ; integer, cells - limits who is cloaked. 0 means no limit
+Crate.Cloak.AllowTypes=       ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Cloak.DisallowTypes=    ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Armor.Targets=none       ; List of Affected House Enumeration - who gains armor
+Crate.Armor.Multiplier=        ; floating point value - armor is multiplied by this, once. Unset
+                               ; follows the [Powerups] Armor parameter (1.5 in the stock rules).
+                               ; A techno already upgraded is left alone, the way the vanilla
+                               ; crate skips anything whose multiplier is no longer 1.0
+Crate.Armor.Radius=            ; integer, cells - limits who is affected. 0 means no limit
+Crate.Armor.AllowTypes=       ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Armor.DisallowTypes=    ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Armor.AllowStack=false   ; boolean - when set, a techno that was already upgraded is
+                               ; multiplied again by every further collection. The vanilla crates
+                               ; never stack, which is what the default keeps
+Crate.Armor.MaxMultiplier=     ; floating point value - the highest the multiplier may reach while
+                               ; stacking. Unset means no limit. Without AllowStack it never
+                               ; applies, since the first upgrade is the only one
+Crate.Firepower.Targets=none   ; List of Affected House Enumeration - who gains firepower
+Crate.Firepower.Multiplier=    ; floating point value - same rules, [Powerups] Firepower is 2.0
+Crate.Firepower.Radius=        ; integer, cells - limits who is affected. 0 means no limit
+Crate.Firepower.AllowTypes=   ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Firepower.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Firepower.AllowStack=false ; boolean - same rules as Crate.Armor.AllowStack
+Crate.Firepower.MaxMultiplier= ; floating point value - same rules as Crate.Armor.MaxMultiplier
+Crate.Speed.Targets=none       ; List of Affected House Enumeration - who gains speed. Only
+                               ; things that move on the ground or water: the vanilla crate skips
+                               ; aircraft, whose speed the flight logic owns
+Crate.Speed.Multiplier=        ; floating point value - same rules, [Powerups] Speed is 1.2
+Crate.Speed.Radius=            ; integer, cells - limits who is affected. 0 means no limit
+Crate.Speed.AllowTypes=       ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Speed.DisallowTypes=    ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Speed.AllowStack=false   ; boolean - same rules as Crate.Armor.AllowStack
+Crate.Speed.MaxMultiplier=     ; floating point value - same rules as Crate.Armor.MaxMultiplier
+                               ; All radius keys follow the [CrateRules] -> CrateRadius default
+                               ; while they are not set (a 3.0 there means 3 cells)
 Crate.Reshroud=false           ; boolean, reshrouds the map for the collecting house
 
 ; Feedback. None of these change the game state.

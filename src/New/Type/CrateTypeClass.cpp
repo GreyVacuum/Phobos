@@ -120,6 +120,20 @@ namespace
 
 		return -2;
 	}
+
+	// Index of a vanilla crate type named the way the [Powerups] list names its effects, or -1
+	// when nothing carries that name. The list lives in the engine and is what the INI list is
+	// read against, so both sides agree on the names.
+	int FindPowerupTypeByName(const char* pName)
+	{
+		for (int i = 0; i < 19; ++i)
+		{
+			if (!_strcmpi(pName, Powerups::Effects[i]))
+				return i;
+		}
+
+		return -1;
+	}
 }
 
 int CrateTypeClass::GetMoneyMin() const
@@ -153,6 +167,9 @@ bool CrateTypeClass::HasEffect() const
 		|| this->Freezes()
 		|| this->Promotes()
 		|| this->Cloaks()
+		|| this->UpgradesArmor()
+		|| this->UpgradesFirepower()
+		|| this->UpgradesSpeed()
 		|| this->FiresTrigger()
 		|| this->Reveal.Get()
 		|| this->Reshroud.Get();
@@ -287,9 +304,17 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	};
 
 	readRadius(this->HealRadius, "Crate.Heal.Radius");
+	this->HealAllowTypes.Read(exINI, section, "Crate.Heal.AllowTypes");
+	this->HealDisallowTypes.Read(exINI, section, "Crate.Heal.DisallowTypes");
 	readRadius(this->InvulnerabilityRadius, "Crate.Invulnerability.Radius");
+	this->InvulnerabilityAllowTypes.Read(exINI, section, "Crate.Invulnerability.AllowTypes");
+	this->InvulnerabilityDisallowTypes.Read(exINI, section, "Crate.Invulnerability.DisallowTypes");
 	readRadius(this->EMPRadius, "Crate.EMP.Radius");
+	this->EMPAllowTypes.Read(exINI, section, "Crate.EMP.AllowTypes");
+	this->EMPDisallowTypes.Read(exINI, section, "Crate.EMP.DisallowTypes");
 	readRadius(this->VeterancyRadius, "Crate.Veterancy.Radius");
+	this->VeterancyAllowTypes.Read(exINI, section, "Crate.Veterancy.AllowTypes");
+	this->VeterancyDisallowTypes.Read(exINI, section, "Crate.Veterancy.DisallowTypes");
 
 	// Directions are named; the eight compass names plus their long forms are accepted, plus Any
 	// and Random. A value that names nothing is reported rather than guessed.
@@ -335,6 +360,33 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->CloakTargets.Read(exINI, section, "Crate.Cloak.Targets");
 
 	readRadius(this->CloakRadius, "Crate.Cloak.Radius");
+	this->CloakAllowTypes.Read(exINI, section, "Crate.Cloak.AllowTypes");
+	this->CloakDisallowTypes.Read(exINI, section, "Crate.Cloak.DisallowTypes");
+
+	this->ArmorTargets.Read(exINI, section, "Crate.Armor.Targets");
+	this->ArmorMultiplier.Read(exINI, section, "Crate.Armor.Multiplier");
+	readRadius(this->ArmorRadius, "Crate.Armor.Radius");
+	this->ArmorAllowTypes.Read(exINI, section, "Crate.Armor.AllowTypes");
+	this->ArmorDisallowTypes.Read(exINI, section, "Crate.Armor.DisallowTypes");
+
+	this->FirepowerTargets.Read(exINI, section, "Crate.Firepower.Targets");
+	this->FirepowerMultiplier.Read(exINI, section, "Crate.Firepower.Multiplier");
+	readRadius(this->FirepowerRadius, "Crate.Firepower.Radius");
+	this->FirepowerAllowTypes.Read(exINI, section, "Crate.Firepower.AllowTypes");
+	this->FirepowerDisallowTypes.Read(exINI, section, "Crate.Firepower.DisallowTypes");
+
+	this->SpeedTargets.Read(exINI, section, "Crate.Speed.Targets");
+	this->SpeedMultiplier.Read(exINI, section, "Crate.Speed.Multiplier");
+	readRadius(this->SpeedRadius, "Crate.Speed.Radius");
+	this->SpeedAllowTypes.Read(exINI, section, "Crate.Speed.AllowTypes");
+	this->SpeedDisallowTypes.Read(exINI, section, "Crate.Speed.DisallowTypes");
+
+	this->ArmorAllowStack.Read(exINI, section, "Crate.Armor.AllowStack");
+	this->ArmorMaxMultiplier.Read(exINI, section, "Crate.Armor.MaxMultiplier");
+	this->FirepowerAllowStack.Read(exINI, section, "Crate.Firepower.AllowStack");
+	this->FirepowerMaxMultiplier.Read(exINI, section, "Crate.Firepower.MaxMultiplier");
+	this->SpeedAllowStack.Read(exINI, section, "Crate.Speed.AllowStack");
+	this->SpeedMaxMultiplier.Read(exINI, section, "Crate.Speed.MaxMultiplier");
 
 	this->Building.Read<true>(exINI, section, "Crate.Building");
 	this->BuildingBuildup.Read(exINI, section, "Crate.Building.Buildup");
@@ -355,22 +407,16 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	// list names its effects; anything else is reported rather than guessed.
 	if (exINI.ReadString(section, "Crate.DefaultRemindType") && !INIClass::IsBlank(exINI.value()))
 	{
-		bool found = false;
+		const int type = FindPowerupTypeByName(exINI.value());
 
-		for (int i = 0; i < 19; ++i)
-		{
-			if (!_strcmpi(exINI.value(), Powerups::Effects[i]))
-			{
-				this->DefaultRemindType = i;
-				found = true;
-				break;
-			}
-		}
-
-		if (!found)
+		if (type < 0)
 		{
 			Debug::INIParseFailed(section, "Crate.DefaultRemindType", exINI.value(),
 				"Expected one of the vanilla crate effect names");
+		}
+		else
+		{
+			this->DefaultRemindType = type;
 		}
 	}
 
@@ -415,6 +461,34 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 		Debug::Log("[CrateType] [%s] has Crate.Units.Count=%d entries for %d Crate.Units. Only a "
 			"single value or exactly one count per entry works; using the first value only.\n",
 			section, this->UnitsCount.size(), this->Units.size());
+	}
+
+	// Crate.Units spawns vehicles, infantry and aircraft. Anything else - a building or a warhead
+	// type, say - resolves as a techno type but would never be spawned by the code that reads the
+	// list, so it is reported here instead of being skipped on every single collection.
+	for (auto const& pType : this->Units)
+	{
+		if (pType && pType->WhatAmI() != AbstractType::UnitType
+			&& pType->WhatAmI() != AbstractType::InfantryType
+			&& pType->WhatAmI() != AbstractType::AircraftType)
+		{
+			Debug::Log("[CrateType] [%s] lists [%s] in Crate.Units, which is not a vehicle, "
+				"infantry or aircraft, so it is never spawned.\n", section, pType->ID);
+		}
+	}
+
+	if (!this->UnitsRandomWeightsData.empty() && this->Units.empty())
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Units.RandomWeights without Crate.Units, so it "
+			"does nothing.\n", section);
+	}
+
+	if (!this->Building.Get() && (this->BuildingBuildup.Get()
+		|| this->BuildingMinDist.Get() != 0 || this->BuildingMaxDist.Get() != 12
+		|| this->BuildingDirection.Get() >= 0 || this->BuildingArc.isset()))
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Building settings without Crate.Building, so they "
+			"do nothing.\n", section);
 	}
 
 	for (size_t i = 0; i < this->UnitsRandomWeightsData.size(); ++i)
@@ -500,11 +574,100 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 			"so it does nothing.\n", section);
 	}
 
-	if (this->CloakRadius.Get() > 0 && !this->Cloaks())
+	if (this->CloakRadius.isset() && !this->Cloaks())
 	{
 		Debug::Log("[CrateType] [%s] sets Crate.Cloak.Radius without Crate.Cloak.Targets, so it "
 			"does nothing.\n", section);
 	}
+
+	// The upgrade crates: a multiplier at or below zero would zero the stat out or turn it into a
+	// penalty, so it falls back to the [Powerups] default instead of being kept.
+	const auto checkMultiplier = [&](Nullable<double>& multiplier, const char* pKey)
+	{
+		if (multiplier.isset() && multiplier.Get() <= 0.0)
+		{
+			Debug::Log("[CrateType] [%s] has %s=%f at or below zero. Multipliers are factors, "
+				"resetting it to the [Powerups] default.\n", section, pKey, multiplier.Get());
+
+			multiplier.Reset();
+		}
+	};
+
+	checkMultiplier(this->ArmorMultiplier, "Crate.Armor.Multiplier");
+	checkMultiplier(this->FirepowerMultiplier, "Crate.Firepower.Multiplier");
+	checkMultiplier(this->SpeedMultiplier, "Crate.Speed.Multiplier");
+
+	// The stacking controls: a cap only means something while stacking is allowed, and one at or
+	// below one could never be reached by a multiplier above one.
+	const auto checkStacking = [&](const Valueable<bool>& allowStack, Nullable<double>& maxMultiplier,
+		const char* pMaxKey)
+	{
+		if (!maxMultiplier.isset())
+			return;
+
+		if (!allowStack.Get())
+		{
+			Debug::Log("[CrateType] [%s] sets %s without AllowStack, so it does nothing - a techno "
+				"that is not stacked on never reaches the cap.\n", section, pMaxKey);
+		}
+
+		if (maxMultiplier.Get() <= 1.0)
+		{
+			Debug::Log("[CrateType] [%s] has %s=%f at or below 1.0, which no multiplier above one "
+				"can ever reach. Dropping it.\n", section, pMaxKey, maxMultiplier.Get());
+
+			maxMultiplier.Reset();
+		}
+	};
+
+	checkStacking(this->ArmorAllowStack, this->ArmorMaxMultiplier, "Crate.Armor.MaxMultiplier");
+	checkStacking(this->FirepowerAllowStack, this->FirepowerMaxMultiplier, "Crate.Firepower.MaxMultiplier");
+	checkStacking(this->SpeedAllowStack, this->SpeedMaxMultiplier, "Crate.Speed.MaxMultiplier");
+
+	// Type filters: a type listed in both lists is reported, because the disallow list wins and the
+	// allow list entry can then never do anything.
+	const auto checkTypeFilters = [&](const ValueableVector<TechnoTypeClass*>& allow,
+		const ValueableVector<TechnoTypeClass*>& disallow, const char* pPrefix)
+	{
+		for (auto const& pType : allow)
+		{
+			if (pType && std::find(disallow.begin(), disallow.end(), pType) != disallow.end())
+			{
+				Debug::Log("[CrateType] [%s] lists [%s] in both %sAllowTypes and %sDisallowTypes. "
+					"The disallow list wins, so it is never affected.\n", section, pType->ID,
+					pPrefix, pPrefix);
+			}
+		}
+	};
+
+	const auto reportUnusedUpgrade = [&](bool hasSettings, bool hasTargets, const char* pPrefix)
+	{
+		if (hasSettings && !hasTargets)
+		{
+			Debug::Log("[CrateType] [%s] sets %sMultiplier, %sRadius, %sAllowStack or "
+				"%sMaxMultiplier without %sTargets, so they do nothing.\n", section, pPrefix,
+				pPrefix, pPrefix, pPrefix, pPrefix);
+		}
+	};
+
+	reportUnusedUpgrade(this->ArmorMultiplier.isset() || this->ArmorRadius.isset()
+		|| this->ArmorAllowStack.Get() || this->ArmorMaxMultiplier.isset(),
+		this->UpgradesArmor(), "Crate.Armor.");
+	reportUnusedUpgrade(this->FirepowerMultiplier.isset() || this->FirepowerRadius.isset()
+		|| this->FirepowerAllowStack.Get() || this->FirepowerMaxMultiplier.isset(),
+		this->UpgradesFirepower(), "Crate.Firepower.");
+	reportUnusedUpgrade(this->SpeedMultiplier.isset() || this->SpeedRadius.isset()
+		|| this->SpeedAllowStack.Get() || this->SpeedMaxMultiplier.isset(),
+		this->UpgradesSpeed(), "Crate.Speed.");
+
+	checkTypeFilters(this->HealAllowTypes, this->HealDisallowTypes, "Crate.Heal.");
+	checkTypeFilters(this->InvulnerabilityAllowTypes, this->InvulnerabilityDisallowTypes, "Crate.Invulnerability.");
+	checkTypeFilters(this->EMPAllowTypes, this->EMPDisallowTypes, "Crate.EMP.");
+	checkTypeFilters(this->VeterancyAllowTypes, this->VeterancyDisallowTypes, "Crate.Veterancy.");
+	checkTypeFilters(this->CloakAllowTypes, this->CloakDisallowTypes, "Crate.Cloak.");
+	checkTypeFilters(this->ArmorAllowTypes, this->ArmorDisallowTypes, "Crate.Armor.");
+	checkTypeFilters(this->FirepowerAllowTypes, this->FirepowerDisallowTypes, "Crate.Firepower.");
+	checkTypeFilters(this->SpeedAllowTypes, this->SpeedDisallowTypes, "Crate.Speed.");
 
 	// The placement range keys (Crate.Building, Crate.Units) share their checks: distances are
 	// cell counts and are clamped, an inverted range is swapped, and an arc width is clamped and
@@ -590,9 +753,17 @@ void CrateTypeClass::Serialize(T& Stm)
 		.Process(this->VeterancyLevel)
 		.Process(this->VeterancyStack)
 		.Process(this->HealRadius)
+		.Process(this->HealAllowTypes)
+		.Process(this->HealDisallowTypes)
 		.Process(this->InvulnerabilityRadius)
+		.Process(this->InvulnerabilityAllowTypes)
+		.Process(this->InvulnerabilityDisallowTypes)
 		.Process(this->EMPRadius)
+		.Process(this->EMPAllowTypes)
+		.Process(this->EMPDisallowTypes)
 		.Process(this->VeterancyRadius)
+		.Process(this->VeterancyAllowTypes)
+		.Process(this->VeterancyDisallowTypes)
 		.Process(this->Trigger)
 		.Process(this->Reveal)
 		.Process(this->SpawnAtCollector)
@@ -603,6 +774,29 @@ void CrateTypeClass::Serialize(T& Stm)
 		.Process(this->UnitsArc)
 		.Process(this->CloakTargets)
 		.Process(this->CloakRadius)
+		.Process(this->CloakAllowTypes)
+		.Process(this->CloakDisallowTypes)
+		.Process(this->ArmorTargets)
+		.Process(this->ArmorMultiplier)
+		.Process(this->ArmorRadius)
+		.Process(this->ArmorAllowTypes)
+		.Process(this->ArmorDisallowTypes)
+		.Process(this->FirepowerTargets)
+		.Process(this->FirepowerMultiplier)
+		.Process(this->FirepowerRadius)
+		.Process(this->FirepowerAllowTypes)
+		.Process(this->FirepowerDisallowTypes)
+		.Process(this->SpeedTargets)
+		.Process(this->SpeedMultiplier)
+		.Process(this->SpeedRadius)
+		.Process(this->SpeedAllowTypes)
+		.Process(this->SpeedDisallowTypes)
+		.Process(this->ArmorAllowStack)
+		.Process(this->ArmorMaxMultiplier)
+		.Process(this->FirepowerAllowStack)
+		.Process(this->FirepowerMaxMultiplier)
+		.Process(this->SpeedAllowStack)
+		.Process(this->SpeedMaxMultiplier)
 		.Process(this->Building)
 		.Process(this->BuildingBuildup)
 		.Process(this->BuildingMinDist)

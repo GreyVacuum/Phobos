@@ -153,19 +153,35 @@ namespace CrateHelpers
 
 	// Runs action for every techno the given house filter matches, relative to the collecting house.
 	// When pCenter is given and radius is positive, only technos within that many cells of the
-	// center are included.
+	// center are included. The optional type filters narrow the audience further: an empty allow
+	// list admits every type, and a type on the disallow list is always left out, even when it is
+	// also on the allow list.
 	//
 	// Walked backwards by index: the action can retire the object it is called on, and a forward
 	// walk would then keep going against a stale end.
 	template <typename TAction>
 	void ForEachAffectedTechno(AffectedHouse targets, HouseClass* pCollectorHouse,
-		CellClass* pCenter, int radius, TAction&& action)
+		CellClass* pCenter, int radius, TAction&& action,
+		const std::vector<TechnoTypeClass*>* pAllowTypes = nullptr,
+		const std::vector<TechnoTypeClass*>* pDisallowTypes = nullptr)
 	{
 		if (!pCollectorHouse || targets == AffectedHouse::None)
 			return;
 
 		const bool limited = pCenter && radius > 0;
 		const CellStruct center = limited ? pCenter->MapCoords : CellStruct::Empty;
+
+		const auto isFilteredOut = [&](const TechnoTypeClass* pType)
+		{
+			if (pDisallowTypes
+				&& std::find(pDisallowTypes->begin(), pDisallowTypes->end(), pType) != pDisallowTypes->end())
+			{
+				return true;
+			}
+
+			return pAllowTypes && !pAllowTypes->empty()
+				&& std::find(pAllowTypes->begin(), pAllowTypes->end(), pType) == pAllowTypes->end();
+		};
 
 		for (int i = TechnoClass::Array.Count - 1; i >= 0; --i)
 		{
@@ -175,6 +191,9 @@ namespace CrateHelpers
 				continue;
 
 			if (!EnumFunctions::CanTargetHouse(targets, pCollectorHouse, pTechno->Owner))
+				continue;
+
+			if (isFilteredOut(pTechno->GetTechnoType()))
 				continue;
 
 			if (limited)
@@ -243,11 +262,170 @@ namespace CrateHelpers
 	}
 
 	// The radius a filtered effect searches around the crate's cell: the crate's own setting, or
-	// the [General] -> CrateRadius default when the crate does not set one.
+	// the [CrateRules] -> CrateRadius default when the crate does not set one. The engine reads
+	// that value as leptons - its reader at 0x66BA90 multiplies the INI value by 256 before
+	// storing it at RulesClass+0x1732 - so it converts back to cells here. Note the setting lives
+	// in [CrateRules], not [General].
 	int ResolveRadius(const Nullable<int>& key)
 	{
-		return key.isset() ? std::max(key.Get(), 0)
-			: std::max(RulesClass::Instance->CrateRadius, 0);
+		if (key.isset())
+			return std::max(key.Get(), 0);
+
+		const int leptons = *reinterpret_cast<const int*>(
+			reinterpret_cast<const char*>(RulesClass::Instance) + 0x1732);
+
+		return std::max(leptons / 256, 0);
+	}
+
+	// The multiplier an upgrade crate hands out: the crate's own setting, or the [Powerups]
+	// parameter of the matching vanilla crate type when it does not set one (1.5 for armor, 2.0
+	// for firepower and 1.2 for speed in the stock rules).
+	double ResolveMultiplier(const Nullable<double>& key, const char* pPowerupName)
+	{
+		if (key.isset())
+			return key.Get();
+
+		for (int i = 0; i < 19; ++i)
+		{
+			if (!_strcmpi(Powerups::Effects[i], pPowerupName))
+				return Powerups::Arguments[i];
+		}
+
+		return 1.0;
+	}
+
+	// The three vanilla upgrade crates. Armor and firepower apply to every affected techno, speed
+	// only to things that move on the ground or water - the vanilla code checks the foot flag and
+	// skips aircraft, whose speed the flight logic owns. A techno whose stat has already been
+	// multiplied is left alone, exactly as the vanilla code skips anything whose multiplier is no
+	// longer 1.0, so collecting the crate again can never compound the upgrade.
+	enum class UpgradeKind { Armor, Firepower, Speed };
+
+	void ApplyUpgrade(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector,
+		UpgradeKind kind)
+	{
+		AffectedHouse targets = AffectedHouse::None;
+		int radius = 0;
+		double multiplier = 1.0;
+		bool allowStack = false;
+		double maxMultiplier = 0.0;
+		const char* pPowerupName = nullptr;
+		const std::vector<TechnoTypeClass*>* pAllowTypes = nullptr;
+		const std::vector<TechnoTypeClass*>* pDisallowTypes = nullptr;
+
+		switch (kind)
+		{
+		case UpgradeKind::Armor:
+			targets = pCrateType->ArmorTargets.Get();
+			radius = ResolveRadius(pCrateType->ArmorRadius);
+			multiplier = ResolveMultiplier(pCrateType->ArmorMultiplier, "Armor");
+			allowStack = pCrateType->ArmorAllowStack.Get();
+
+			if (pCrateType->ArmorMaxMultiplier.isset())
+				maxMultiplier = pCrateType->ArmorMaxMultiplier.Get();
+
+			pPowerupName = "Armor";
+			pAllowTypes = &pCrateType->ArmorAllowTypes;
+			pDisallowTypes = &pCrateType->ArmorDisallowTypes;
+			break;
+		case UpgradeKind::Firepower:
+			targets = pCrateType->FirepowerTargets.Get();
+			radius = ResolveRadius(pCrateType->FirepowerRadius);
+			multiplier = ResolveMultiplier(pCrateType->FirepowerMultiplier, "Firepower");
+			allowStack = pCrateType->FirepowerAllowStack.Get();
+
+			if (pCrateType->FirepowerMaxMultiplier.isset())
+				maxMultiplier = pCrateType->FirepowerMaxMultiplier.Get();
+
+			pPowerupName = "Firepower";
+			pAllowTypes = &pCrateType->FirepowerAllowTypes;
+			pDisallowTypes = &pCrateType->FirepowerDisallowTypes;
+			break;
+		case UpgradeKind::Speed:
+			targets = pCrateType->SpeedTargets.Get();
+			radius = ResolveRadius(pCrateType->SpeedRadius);
+			multiplier = ResolveMultiplier(pCrateType->SpeedMultiplier, "Speed");
+			allowStack = pCrateType->SpeedAllowStack.Get();
+
+			if (pCrateType->SpeedMaxMultiplier.isset())
+				maxMultiplier = pCrateType->SpeedMaxMultiplier.Get();
+
+			pPowerupName = "Speed";
+			pAllowTypes = &pCrateType->SpeedAllowTypes;
+			pDisallowTypes = &pCrateType->SpeedDisallowTypes;
+			break;
+		}
+
+		// The new value for an already present multiplier: multiplied again while stacking is
+		// allowed - capped when a maximum is set - and left alone otherwise, which is the vanilla
+		// behaviour. A stat at exactly 1.0 has never been upgraded, so it always gets its first.
+		auto const upgrade = [&](double current)
+		{
+			if (current != 1.0 && !allowStack)
+				return current;
+
+			double result = current * multiplier;
+
+			if (maxMultiplier > 0.0)
+				result = std::min(result, maxMultiplier);
+
+			return result;
+		};
+
+		int upgraded = 0;
+
+		ForEachAffectedTechno(targets, pCollector->Owner, pCell, radius, [&](TechnoClass* pTechno)
+		{
+			switch (kind)
+			{
+			case UpgradeKind::Armor:
+			{
+				const double result = upgrade(pTechno->ArmorMultiplier);
+
+				if (result == pTechno->ArmorMultiplier)
+					return;
+
+				pTechno->ArmorMultiplier = result;
+				break;
+			}
+			case UpgradeKind::Firepower:
+			{
+				const double result = upgrade(pTechno->FirepowerMultiplier);
+
+				if (result == pTechno->FirepowerMultiplier)
+					return;
+
+				pTechno->FirepowerMultiplier = result;
+				break;
+			}
+			case UpgradeKind::Speed:
+			{
+				if (!(pTechno->AbstractFlags & AbstractFlags::Foot)
+					|| pTechno->WhatAmI() == AbstractType::Aircraft)
+				{
+					return;
+				}
+
+				auto const pFoot = static_cast<FootClass*>(pTechno);
+				const double result = upgrade(pFoot->SpeedMultiplier);
+
+				if (result == pFoot->SpeedMultiplier)
+					return;
+
+				pFoot->SpeedMultiplier = result;
+				break;
+			}
+			}
+
+			pTechno->Flash(100);
+			++upgraded;
+		}, pAllowTypes, pDisallowTypes);
+		if (upgraded > 0)
+		{
+			Debug::Log("[CrateType] [%s] upgraded %d technos of house %d (%s x%f%s within %d "
+				"cells).\n", pCrateType->Name.data(), upgraded, pCollector->Owner->ArrayIndex,
+				pPowerupName, multiplier, allowStack ? " stacking" : "", radius);
+		}
 	}
 
 	// Heals every techno the collecting house is allowed to affect, as picked by Crate.HealTargets.
@@ -279,7 +457,7 @@ namespace CrateHelpers
 
 			pTechno->ReceiveDamage(&damage, 0, pHealWarhead, pCollector, true, true, pCollectorHouse);
 			pTechno->Flash(100);
-		});
+		}, &pCrateType->HealAllowTypes, &pCrateType->HealDisallowTypes);
 	}
 
 	// Makes technos the collecting house is allowed to affect take no damage for a while, the way
@@ -297,7 +475,7 @@ namespace CrateHelpers
 		{
 			if (pTechno->IronCurtainTimer.GetTimeLeft() < duration)
 				pTechno->IronCurtainTimer.Start(duration);
-		});
+		}, &pCrateType->InvulnerabilityAllowTypes, &pCrateType->InvulnerabilityDisallowTypes);
 	}
 
 	// Freezes technos the collecting house is allowed to affect, the way an EMP does. A longer
@@ -311,7 +489,7 @@ namespace CrateHelpers
 		{
 			if (pTechno->EMPLockRemaining < static_cast<DWORD>(duration))
 				pTechno->EMPLockRemaining = static_cast<DWORD>(duration);
-		});
+		}, &pCrateType->EMPAllowTypes, &pCrateType->EMPDisallowTypes);
 	}
 
 	// Cloaks technos the collecting house is allowed to affect. Types that cannot cloak at all are
@@ -324,7 +502,7 @@ namespace CrateHelpers
 		{
 			if (auto const pType = pTechno->GetTechnoType(); pType && pType->Cloakable)
 				pTechno->Cloak(false);
-		});
+		}, &pCrateType->CloakAllowTypes, &pCrateType->CloakDisallowTypes);
 	}
 
 	// Promotes technos the collecting house is allowed to affect. Without Crate.Veterancy.Stack,
@@ -352,7 +530,7 @@ namespace CrateHelpers
 
 			pTechno->Flash(100);
 			++promoted;
-		});
+		}, &pCrateType->VeterancyAllowTypes, &pCrateType->VeterancyDisallowTypes);
 
 		// One line per collection, so a test that promotes nobody can be told apart from one that
 		// never ran: the house, the radius, the level and the count are all in the log.
@@ -935,6 +1113,15 @@ namespace CrateHelpers
 
 		if (pCrateType->Promotes())
 			PromoteAffectedTargets(pCrateType, pCell, pCollector);
+
+		if (pCrateType->UpgradesArmor())
+			ApplyUpgrade(pCrateType, pCell, pCollector, UpgradeKind::Armor);
+
+		if (pCrateType->UpgradesFirepower())
+			ApplyUpgrade(pCrateType, pCell, pCollector, UpgradeKind::Firepower);
+
+		if (pCrateType->UpgradesSpeed())
+			ApplyUpgrade(pCrateType, pCell, pCollector, UpgradeKind::Speed);
 
 		if (pCrateType->Cloaks())
 			CloakAffectedTargets(pCrateType, pCell, pCollector);

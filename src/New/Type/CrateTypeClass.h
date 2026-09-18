@@ -106,9 +106,25 @@ public:
 	// cell. Unset means the crate follows the [General] -> CrateRadius default; an explicit 0
 	// means the effect is not limited at all.
 	Nullable<int> HealRadius;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> HealAllowTypes;
+	ValueableVector<TechnoTypeClass*> HealDisallowTypes;
 	Nullable<int> InvulnerabilityRadius;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> InvulnerabilityAllowTypes;
+	ValueableVector<TechnoTypeClass*> InvulnerabilityDisallowTypes;
 	Nullable<int> EMPRadius;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> EMPAllowTypes;
+	ValueableVector<TechnoTypeClass*> EMPDisallowTypes;
 	Nullable<int> VeterancyRadius;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> VeterancyAllowTypes;
+	ValueableVector<TechnoTypeClass*> VeterancyDisallowTypes;
 
 	// The map trigger whose actions run when the crate is collected. It is named by its id as the
 	// map references it, and its actions fire unconditionally - its events are not consulted.
@@ -140,6 +156,49 @@ public:
 	// as they are.
 	Valueable<AffectedHouse> CloakTargets;
 	Nullable<int> CloakRadius;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> CloakAllowTypes;
+	ValueableVector<TechnoTypeClass*> CloakDisallowTypes;
+
+	// The three upgrade crates: armor, firepower and speed of the affected technos are multiplied
+	// by the matching multiplier. An unset multiplier follows the [Powerups] parameter of the
+	// matching vanilla crate type. The speed upgrade skips aircraft, whose speed the flight logic
+	// owns, the way the vanilla crate does.
+	//
+	// By default a techno whose stat has already been multiplied is left alone, which is what the
+	// vanilla crates do - a crate can never hand the same upgrade out twice, no matter how often
+	// it is collected. AllowStack lifts that: every collection multiplies again, and MaxMultiplier
+	// caps the result when set, so repeated collections cannot run away.
+	Valueable<AffectedHouse> ArmorTargets;
+	Nullable<double> ArmorMultiplier;
+	Nullable<int> ArmorRadius;
+	Valueable<bool> ArmorAllowStack;
+	Nullable<double> ArmorMaxMultiplier;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> ArmorAllowTypes;
+	ValueableVector<TechnoTypeClass*> ArmorDisallowTypes;
+
+	Valueable<AffectedHouse> FirepowerTargets;
+	Nullable<double> FirepowerMultiplier;
+	Nullable<int> FirepowerRadius;
+	Valueable<bool> FirepowerAllowStack;
+	Nullable<double> FirepowerMaxMultiplier;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> FirepowerAllowTypes;
+	ValueableVector<TechnoTypeClass*> FirepowerDisallowTypes;
+
+	Valueable<AffectedHouse> SpeedTargets;
+	Nullable<double> SpeedMultiplier;
+	Nullable<int> SpeedRadius;
+	Valueable<bool> SpeedAllowStack;
+	Nullable<double> SpeedMaxMultiplier;
+	// Which techno types the effect may touch. An empty AllowTypes admits every type;
+	// DisallowTypes always wins over it.
+	ValueableVector<TechnoTypeClass*> SpeedAllowTypes;
+	ValueableVector<TechnoTypeClass*> SpeedDisallowTypes;
 
 	// A building spawned next to the crate for the collecting house.
 	Valueable<BuildingTypeClass*> Building;
@@ -200,9 +259,17 @@ public:
 		, VeterancyLevel { 0 }
 		, VeterancyStack { false }
 		, HealRadius { }
+		, HealAllowTypes { }
+		, HealDisallowTypes { }
 		, InvulnerabilityRadius { }
+		, InvulnerabilityAllowTypes { }
+		, InvulnerabilityDisallowTypes { }
 		, EMPRadius { }
+		, EMPAllowTypes { }
+		, EMPDisallowTypes { }
 		, VeterancyRadius { }
+		, VeterancyAllowTypes { }
+		, VeterancyDisallowTypes { }
 		, Trigger { nullptr }
 		, Reveal { false }
 		, SpawnAtCollector { false }
@@ -213,6 +280,29 @@ public:
 		, UnitsArc { }
 		, CloakTargets { AffectedHouse::None }
 		, CloakRadius { }
+		, CloakAllowTypes { }
+		, CloakDisallowTypes { }
+		, ArmorTargets { AffectedHouse::None }
+		, ArmorMultiplier { }
+		, ArmorRadius { }
+		, ArmorAllowStack { false }
+		, ArmorMaxMultiplier { }
+		, ArmorAllowTypes { }
+		, ArmorDisallowTypes { }
+		, FirepowerTargets { AffectedHouse::None }
+		, FirepowerMultiplier { }
+		, FirepowerRadius { }
+		, FirepowerAllowStack { false }
+		, FirepowerMaxMultiplier { }
+		, FirepowerAllowTypes { }
+		, FirepowerDisallowTypes { }
+		, SpeedTargets { AffectedHouse::None }
+		, SpeedMultiplier { }
+		, SpeedRadius { }
+		, SpeedAllowStack { false }
+		, SpeedMaxMultiplier { }
+		, SpeedAllowTypes { }
+		, SpeedDisallowTypes { }
 		, Building { nullptr }
 		, BuildingBuildup { false }
 		, BuildingMinDist { 0 }
@@ -235,6 +325,9 @@ public:
 	bool Freezes() const { return this->EMPTargets.Get() != AffectedHouse::None; }
 	bool Promotes() const { return this->VeterancyTargets.Get() != AffectedHouse::None; }
 	bool Cloaks() const { return this->CloakTargets.Get() != AffectedHouse::None; }
+	bool UpgradesArmor() const { return this->ArmorTargets.Get() != AffectedHouse::None; }
+	bool UpgradesFirepower() const { return this->FirepowerTargets.Get() != AffectedHouse::None; }
+	bool UpgradesSpeed() const { return this->SpeedTargets.Get() != AffectedHouse::None; }
 	bool FiresTrigger() const { return this->Trigger.Get() != nullptr; }
 
 	int GetMoneyMin() const;
