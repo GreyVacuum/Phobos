@@ -2,8 +2,11 @@
 
 #include "CrateSource.h"
 
+#include <HouseClass.h>
+#include <HouseTypeClass.h>
 #include <Powerups.h>
 #include <RulesClass.h>
+#include <TiberiumClass.h>
 #include <TriggerTypeClass.h>
 #include <WarheadTypeClass.h>
 
@@ -121,6 +124,22 @@ namespace
 		return -2;
 	}
 
+	// Index of the [Tiberiums] entry carrying this name, or -1 when nothing does. The list lives
+	// in the engine and is what the INI section is read against.
+	int FindTiberiumByName(const char* pName)
+	{
+		for (int i = 0; i < TiberiumClass::Array.Count; ++i)
+		{
+			if (auto const pTiberium = TiberiumClass::Array[i])
+			{
+				if (!_strcmpi(pName, pTiberium->ID))
+					return i;
+			}
+		}
+
+		return -1;
+	}
+
 	// Index of a vanilla crate type named the way the [Powerups] list names its effects, or -1
 	// when nothing carries that name. The list lives in the engine and is what the INI list is
 	// read against, so both sides agree on the names.
@@ -136,14 +155,15 @@ namespace
 	}
 }
 
+// Both bounds keep their sign so that a negative range takes money away instead of granting it.
 int CrateTypeClass::GetMoneyMin() const
 {
-	return std::abs(this->MoneyMin.Get(0));
+	return this->MoneyMin.Get(0);
 }
 
 int CrateTypeClass::GetMoneyMax() const
 {
-	return std::abs(this->MoneyMax.Get(this->GetMoneyMin()));
+	return this->MoneyMax.Get(this->GetMoneyMin());
 }
 
 WarheadTypeClass* CrateTypeClass::GetHealWarhead() const
@@ -172,7 +192,17 @@ bool CrateTypeClass::HasEffect() const
 		|| this->UpgradesSpeed()
 		|| this->FiresTrigger()
 		|| this->Reveal.Get()
-		|| this->Reshroud.Get();
+		|| this->Reshroud.Get()
+		|| this->Tiberium.Get() >= 0;
+}
+
+bool CrateTypeClass::CanBeCollectedBy(HouseClass* pHouse) const
+{
+	if (this->AllowedHouses.empty() || !pHouse)
+		return true;
+
+	auto const& houses = this->AllowedHouses;
+	return std::find(houses.begin(), houses.end(), pHouse->Type) != houses.end();
 }
 
 void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
@@ -399,6 +429,29 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 
 	this->Reshroud.Read(exINI, section, "Crate.Reshroud");
 
+	// Tiberium: named the way the [Tiberiums] list names its types; an unknown one is reported
+	// rather than guessed.
+	if (exINI.ReadString(section, "Crate.Tiberium") && !INIClass::IsBlank(exINI.value()))
+	{
+		const int type = FindTiberiumByName(exINI.value());
+
+		if (type < 0)
+		{
+			Debug::INIParseFailed(section, "Crate.Tiberium", exINI.value(),
+				"Expected one of the [Tiberiums] names");
+		}
+		else
+		{
+			this->Tiberium = type;
+		}
+	}
+
+	this->TiberiumCount.Read(exINI, section, "Crate.Tiberium.Count");
+	this->TiberiumStage.Read(exINI, section, "Crate.Tiberium.Stage");
+	readRadius(this->TiberiumRadius, "Crate.Tiberium.Radius");
+	this->TiberiumClear.Read(exINI, section, "Crate.Tiberium.Clear");
+	this->TiberiumClearAmount.Read(exINI, section, "Crate.Tiberium.ClearAmount");
+
 	this->Anim.Read<true>(exINI, section, "Crate.Anim");
 	this->Sound.Read(exINI, section, "Crate.Sound");
 	this->EVA.Read(exINI, section, "Crate.EVA");
@@ -422,6 +475,7 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 
 	this->Chance.Read(exINI, section, "Crate.Chance");
 	this->CollectOnWater.Read(exINI, section, "Crate.CollectOnWater");
+	this->AllowedHouses.Read(exINI, section, "Crate.AllowedHouses");
 
 	// Nothing below changes behaviour - it only reports settings that cannot do what they look
 	// like they do, so a crate never silently ignores a key or silently pays out nothing.
@@ -438,6 +492,15 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 	{
 		Debug::Log("[CrateType] [%s] sets its super weapon settings without Crate.SuperWeapon, so "
 			"they do nothing.\n", section);
+	}
+
+	// Crate.Money.Max alone does nothing: whether the crate handles money at all is decided by
+	// Crate.Money.Min alone, so this pairing is reported the same way the others are.
+	if (!this->GivesMoney() && this->MoneyMax.isset())
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Money.Max without Crate.Money.Min, so the crate "
+			"neither grants nor takes any money. The money range is driven by Crate.Money.Min.\n",
+			section);
 	}
 
 	if (this->GivesSuperWeapon()
@@ -539,16 +602,20 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 			"nothing.\n", section);
 	}
 
-	// An effect that targets technos needs both the audience and a magnitude to do anything.
+	// An effect that targets technos needs both the audience and a magnitude to do anything. The
+	// magnitude counts as set when it is positive, or non-zero for the effects that also accept a
+	// negative value to work in the other direction.
 	auto const reportUnpairedTargets = [section](const char* pMagnitudeKey, int magnitude,
-		bool hasTargets, const char* pTargetsKey)
+		bool hasTargets, const char* pTargetsKey, bool allowNegative = false)
 	{
-		if (magnitude > 0 && !hasTargets)
+		const bool hasMagnitude = allowNegative ? magnitude != 0 : magnitude > 0;
+
+		if (hasMagnitude && !hasTargets)
 			Debug::Log("[CrateType] [%s] sets %s without %s, so it does nothing.\n",
 				section, pMagnitudeKey, pTargetsKey);
-		else if (magnitude <= 0 && hasTargets)
-			Debug::Log("[CrateType] [%s] sets %s without a positive %s, so it does nothing.\n",
-				section, pTargetsKey, pMagnitudeKey);
+		else if (!hasMagnitude && hasTargets)
+			Debug::Log("[CrateType] [%s] sets %s without a %s %s, so it does nothing.\n",
+				section, pTargetsKey, allowNegative ? "non-zero" : "positive", pMagnitudeKey);
 	};
 
 	reportUnpairedTargets("Crate.Invulnerability.Duration", this->InvulnerabilityDuration.Get(),
@@ -558,14 +625,15 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 		this->Freezes(), "Crate.EMP.Targets");
 
 	reportUnpairedTargets("Crate.Veterancy.Level", this->VeterancyLevel.Get(),
-		this->Promotes(), "Crate.Veterancy.Targets");
+		this->Promotes(), "Crate.Veterancy.Targets", true);
 
-	if (this->VeterancyLevel.Get() > 2)
+	if (this->VeterancyLevel.Get() > 2 || this->VeterancyLevel.Get() < -2)
 	{
-		Debug::Log("[CrateType] [%s] has Crate.Veterancy.Level=%d, but only 1 (veteran) and 2 "
-			"(elite) exist. Clamping.\n", section, this->VeterancyLevel.Get());
+		Debug::Log("[CrateType] [%s] has Crate.Veterancy.Level=%d, but only -2 (demote to rookie), "
+			"-1 (demote to veteran), 1 (veteran) and 2 (elite) exist. Clamping.\n", section,
+			this->VeterancyLevel.Get());
 
-		this->VeterancyLevel = std::clamp(this->VeterancyLevel.Get(), 0, 2);
+		this->VeterancyLevel = std::clamp(this->VeterancyLevel.Get(), -2, 2);
 	}
 
 	if (this->SpawnAtCollector.Get() && this->Units.empty())
@@ -719,6 +787,38 @@ void CrateTypeClass::LoadFromINI(CCINIClass* pINI)
 			"first is undone by the other.\n", section);
 	}
 
+	// The tiberium settings only mean something together with Crate.Tiberium.
+	if (this->Tiberium.Get() < 0
+		&& (this->TiberiumCount.Get() != 1 || this->TiberiumStage.Get() >= 0
+			|| this->TiberiumRadius.isset() || this->TiberiumClear.Get()
+			|| this->TiberiumClearAmount.Get() != 0))
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Tiberium settings without Crate.Tiberium, so they "
+			"do nothing.\n", section);
+	}
+
+	if (this->TiberiumCount.Get() < 0)
+	{
+		Debug::Log("[CrateType] [%s] has Crate.Tiberium.Count=%d below zero. Counts are cell "
+			"counts, clamping to 0 (every cell in range).\n", section, this->TiberiumCount.Get());
+
+		this->TiberiumCount = 0;
+	}
+
+	if (this->TiberiumClearAmount.Get() < 0)
+	{
+		Debug::Log("[CrateType] [%s] has a negative Crate.Tiberium.ClearAmount. Amounts are ore "
+			"shares, clamping to 0 (the whole cell).\n", section);
+
+		this->TiberiumClearAmount = 0;
+	}
+
+	if (this->TiberiumClearAmount.Get() != 0 && !this->TiberiumClear.Get())
+	{
+		Debug::Log("[CrateType] [%s] sets Crate.Tiberium.ClearAmount without Crate.Tiberium.Clear, "
+			"so it does nothing.\n", section);
+	}
+
 	if (this->Chance.Get() < 0.0 || this->Chance.Get() > 1.0)
 	{
 		Debug::Log("[CrateType] [%s] has Crate.Chance=%.4f outside 0.0-1.0. It is a probability, "
@@ -804,12 +904,19 @@ void CrateTypeClass::Serialize(T& Stm)
 		.Process(this->BuildingDirection)
 		.Process(this->BuildingArc)
 		.Process(this->Reshroud)
+		.Process(this->Tiberium)
+		.Process(this->TiberiumCount)
+		.Process(this->TiberiumStage)
+		.Process(this->TiberiumRadius)
+		.Process(this->TiberiumClear)
+		.Process(this->TiberiumClearAmount)
 		.Process(this->Anim)
 		.Process(this->Sound)
 		.Process(this->EVA)
 		.Process(this->DefaultRemindType)
 		.Process(this->Chance)
 		.Process(this->CollectOnWater)
+		.Process(this->AllowedHouses)
 		;
 }
 

@@ -6,6 +6,8 @@
 
 class AnimTypeClass;
 class BuildingTypeClass;
+class HouseClass;
+class HouseTypeClass;
 class SuperWeaponTypeClass;
 class TechnoTypeClass;
 class TriggerTypeClass;
@@ -54,7 +56,11 @@ public:
 	Nullable<int> MoneyMin;
 	Nullable<int> MoneyMax;
 
-	ValueableIdx<SuperWeaponTypeClass> SuperWeapon;
+	// The super weapon(s) handed over. Listing more than one draws a single one of them when the
+	// crate is collected, so one crate can offer a whole set instead of needing one crate type per
+	// weapon. Listing the same weapon twice makes it equally likely to be drawn twice as often,
+	// since every entry takes an equal share of the draw.
+	ValueableVector<SuperWeaponTypeClass*> SuperWeapon;
 	Valueable<int> SuperWeaponAction;
 
 	// Whether a handed over weapon is ready at once. Clearing this makes the player wait for it to
@@ -91,15 +97,18 @@ public:
 	Valueable<AffectedHouse> EMPTargets;
 	Valueable<int> EMPDuration;
 
-	// Promotes technos the collecting house is allowed to affect. Level 1 is a veteran, 2 an elite;
-	// technos already above the level are left alone and types that cannot gain experience at all
-	// are never touched.
+	// Promotes - or demotes - technos the collecting house is allowed to affect. Level 1 is a
+	// veteran, 2 an elite. A negative level demotes instead, -1 to veteran and -2 to rookie.
+	// Technos already at or past the level are left alone in either direction, so a promotion
+	// never demotes and a demotion never promotes. Types that cannot gain experience at all are
+	// never touched.
 	Valueable<AffectedHouse> VeterancyTargets;
 	Valueable<int> VeterancyLevel;
 
 	// When set, collecting the crate again adds to the experience the affected technos already
 	// have instead of each promotion being capped at the level, so two Level=1 collections make an
-	// elite. The sum is clamped by [General] -> VeteranCap as usual.
+	// elite. A negative level subtracts that much experience instead, down to a floor of a rookie.
+	// The sum is clamped by [General] -> VeteranCap as usual.
 	Valueable<bool> VeterancyStack;
 
 	// Limits the audience of the matching filtered effect to this many cells around the crate's
@@ -226,6 +235,19 @@ public:
 
 	Valueable<bool> Reshroud;
 
+	// Tiberium (ore): grows the named type on the cells around the crate, or clears what is already
+	// there. The type is named the way the [Tiberiums] list names it. Count is how many cells to
+	// touch - 0 means every cell in range that can take it. Stage is the density to grow to, -1
+	// being the fullest the type supports, and clearing takes an amount per cell instead, 0 being
+	// the whole cell. Unlike the other radius keys, 0 here means the crate's own cell only, since
+	// covering the whole map in ore would be a performance problem rather than a feature.
+	Valueable<int> Tiberium;
+	Valueable<int> TiberiumCount;
+	Valueable<int> TiberiumStage;
+	Nullable<int> TiberiumRadius;
+	Valueable<bool> TiberiumClear;
+	Valueable<int> TiberiumClearAmount;
+
 	// Feedback for the collecting player.
 	Valueable<AnimTypeClass*> Anim;
 	ValueableIdx<VocClass> Sound;
@@ -241,11 +263,15 @@ public:
 	Valueable<double> Chance;
 	Valueable<bool> CollectOnWater;
 
+	// When set, only units of these house types can collect the crate; everyone else walks past
+	// it and the crate stays where it is. An empty list lets every house collect it.
+	ValueableVector<HouseTypeClass*> AllowedHouses;
+
 	CrateTypeClass(const char* const pTitle) : Enumerable<CrateTypeClass>(pTitle)
 		, TypeID { }
 		, MoneyMin { }
 		, MoneyMax { }
-		, SuperWeapon { -1 }
+		, SuperWeapon { }
 		, SuperWeaponAction { CrateSuperWeaponAction::Charge }
 		, SuperWeaponStartsReady { true }
 		, Weapon { nullptr }
@@ -314,16 +340,27 @@ public:
 		, BuildingDirection { -3 }
 		, BuildingArc { }
 		, Reshroud { false }
+		, Tiberium { -1 }
+		, TiberiumCount { 1 }
+		, TiberiumStage { -1 }
+		, TiberiumRadius { }
+		, TiberiumClear { false }
+		, TiberiumClearAmount { 0 }
 		, Anim { nullptr }
 		, Sound { -1 }
 		, EVA { -1 }
 		, DefaultRemindType { -1 }
 		, Chance { 0.0 }
 		, CollectOnWater { true }
+		, AllowedHouses { }
 	{ }
 
 	bool GivesMoney() const { return this->MoneyMin.isset(); }
-	bool GivesSuperWeapon() const { return this->SuperWeapon.Get() >= 0; }
+	bool GivesSuperWeapon() const { return !this->SuperWeapon.empty(); }
+
+	// True when this house may collect the crate: no AllowedHouses restriction set, or the
+	// house's type is listed in it.
+	bool CanBeCollectedBy(HouseClass* pHouse) const;
 	bool Heals() const { return this->HealTargets.Get() != AffectedHouse::None; }
 	bool Protects() const { return this->InvulnerabilityTargets.Get() != AffectedHouse::None; }
 	bool Freezes() const { return this->EMPTargets.Get() != AffectedHouse::None; }
@@ -333,6 +370,8 @@ public:
 	bool UpgradesFirepower() const { return this->FirepowerTargets.Get() != AffectedHouse::None; }
 	bool UpgradesSpeed() const { return this->SpeedTargets.Get() != AffectedHouse::None; }
 	bool FiresTrigger() const { return this->Trigger.Get() != nullptr; }
+	bool SpawnsTiberium() const { return this->Tiberium.Get() >= 0 && !this->TiberiumClear.Get(); }
+	bool ClearsTiberium() const { return this->Tiberium.Get() >= 0 && this->TiberiumClear.Get(); }
 
 	int GetMoneyMin() const;
 	int GetMoneyMax() const;

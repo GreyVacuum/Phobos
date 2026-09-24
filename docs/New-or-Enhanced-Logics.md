@@ -3922,9 +3922,14 @@ CrateType=MYCRATE              ; crate this type places. Accepts the crate type'
 Crate.TypeID=21                ; integer, 21 or higher - how maps and triggers select this crate type
 
 ; Collecting the crate. Set as many of these as you like, they all apply.
-Crate.Money.Min=0              ; integer, lower cash amount
-Crate.Money.Max=0              ; integer, upper cash amount, defaults to Crate.Money.Min
-Crate.SuperWeapon=             ; SuperWeaponType
+Crate.Money.Min=0              ; integer, lower cash amount. Negative values take money away
+                               ; instead of granting it, but never past an empty wallet
+Crate.Money.Max=0              ; integer, upper cash amount, defaults to Crate.Money.Min. The
+                               ; order of the two does not matter, a random amount between
+                               ; them is granted (positive) or taken (negative)
+Crate.SuperWeapon=             ; list of SuperWeaponTypes - one of them is drawn at random when the
+                               ; crate is collected, so a crate can offer a whole set. A repeated
+                               ; entry takes a larger share of the draws
 Crate.SuperWeaponAction=Charge ; enum (Charge|Grant|OneTime) - Charge makes it ready to fire, Grant
                                ; hands it over to recharge as usual, OneTime hands over a single use
 Crate.SuperWeaponStartsReady=true ; boolean - false hands the weapon over empty, so the player has to
@@ -3959,6 +3964,15 @@ Crate.Units.Direction=Random   ; N, NE, E, SE, S, SW, W, NW (or the long forms) 
                                ; directions. Any searches all
 Crate.Units.Arc=45             ; integer, degrees - the width of the accepted sector, +- half of it
                                ; around the direction. Only meaningful with a Direction
+Crate.Tiberium=                ; TiberiumType ([Tiberiums] name, e.g. Riparius, Cruentus) - grows
+                               ; that ore on the cells around the crate, or clears what is there
+Crate.Tiberium.Count=1         ; integer - how many cells to touch, 0 for every cell in range that
+                               ; can take the ore
+Crate.Tiberium.Stage=-1        ; integer - density to grow to, -1 for the fullest the type supports
+Crate.Tiberium.Radius=         ; integer, cells - range. Unlike the other radius keys, 0 means the
+                               ; crate's own cell only, not the whole map
+Crate.Tiberium.Clear=false     ; boolean - clears the ore in range instead of growing it
+Crate.Tiberium.ClearAmount=0   ; integer - how much ore to take per cell while clearing, 0 for all
 Crate.Building=                ; BuildingType, built next to the crate for the collecting house,
                                ; completed at once without a buildup sequence. The cell is picked
                                ; with the game's own placement check plus an occupant check on
@@ -3989,12 +4003,15 @@ Crate.EMP.Duration=0           ; integer, frames - how long, 15 frames are a sec
 Crate.EMP.Radius=              ; integer, cells - limits who is frozen. 0 means no limit
 Crate.EMP.AllowTypes=         ; list of TechnoTypes - only these may be affected. Empty admits every type
 Crate.EMP.DisallowTypes=      ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
-Crate.Veterancy.Targets=none   ; List of Affected House Enumeration - who is promoted
-Crate.Veterancy.Level=0        ; integer, 1 promotes to veteran, 2 to elite. Technos already above
-                               ; the level are left alone (unless Crate.Veterancy.Stack is set)
+Crate.Veterancy.Targets=none   ; List of Affected House Enumeration - who is promoted or demoted
+Crate.Veterancy.Level=0        ; integer, 1 promotes to veteran, 2 to elite. A negative level
+                               ; demotes instead, -1 to veteran and -2 to rookie. Technos already
+                               ; at or past the level are left alone (unless Crate.Veterancy.Stack
+                               ; is set), so a promotion never demotes and a demotion never promotes
 Crate.Veterancy.Stack=false    ; boolean - when set, collecting the crate again adds to the existing
                                ; experience instead of capping at the level, so two Level=1
-                               ; collections make an elite
+                               ; collections make an elite. A negative level subtracts that much
+                               ; experience instead, with a rookie as the floor
 Crate.Veterancy.Radius=        ; integer, cells - limits who is promoted. 0 means no limit
 Crate.Veterancy.AllowTypes=   ; list of TechnoTypes - only these may be affected. Empty admits every type
 Crate.Veterancy.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
@@ -4058,6 +4075,9 @@ Crate.DefaultRemindType=       ; the name of a vanilla crate effect from [Poweru
 Crate.Chance=0.0               ; floating point value, 0.0-1.0 - probability that a crate whose type
                                ; is rolled on pickup becomes this one
 Crate.CollectOnWater=true      ; boolean, false leaves the crate uncollected on water
+Crate.AllowedHouses=           ; list of HouseTypes - only units of these houses may collect the
+                               ; crate, everyone else walks past it and the crate stays where it
+                               ; is. Empty lets every house collect it
 ```
 
 ```{note}
@@ -4081,5 +4101,5 @@ A super weapon handed over with `Grant` or `Charge` is protected from the engine
 
 The filtered effects (`Crate.HealTargets`, `Crate.Invulnerability`, `Crate.EMP` and `Crate.Veterancy`) cover every techno they match across the whole map unless a `Radius` key limits them to the area around the crate's cell. Note that invulnerability shares the iron curtain's expiry behaviour: infantry and other organic units die when their timer runs out, exactly as they do under the super weapon.
 
-Each veterancy collection writes one line to the log (`promotion: level ... within ... cells hit ... technos`), so a test that promotes nobody can be told apart from one whose keys did not line up - most commonly a missing `Crate.Veterancy.Level`, which defaults to 0 and adds nothing.
+Each veterancy collection writes one line to the log (`rank change ... level ... within ... cells hit ... technos`), so a test that affects nobody can be told apart from one whose keys did not line up - most commonly a missing `Crate.Veterancy.Level`, which defaults to 0 and changes nothing.
 ```

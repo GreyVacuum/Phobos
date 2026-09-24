@@ -12,6 +12,7 @@
 #include <ScenarioClass.h>
 #include <SidebarClass.h>
 #include <SuperClass.h>
+#include <TiberiumClass.h>
 #include <TriggerClass.h>
 #include <TriggerTypeClass.h>
 #include <UnitClass.h>
@@ -214,7 +215,7 @@ namespace CrateHelpers
 	}
 
 	// True when any [CrateTypes] entry names this super weapon type via Crate.SuperWeapon. The
-	// loaded types are compared by pointer against the crate's stored index, so this does not
+	// lists hold the loaded types themselves, so this is a plain pointer comparison and does not
 	// depend on the engine keeping SuperWeaponTypeClass::ArrayIndex anywhere in particular. Crate
 	// types are few and this is checked rarely, so a linear walk is fine.
 	bool IsCrateReferencedSuper(SuperWeaponTypeClass* pType)
@@ -222,14 +223,13 @@ namespace CrateHelpers
 		if (!pType)
 			return false;
 
-		const int count = SuperWeaponTypeClass::Array.Count;
-
 		for (auto const& pCrateType : CrateTypeClass::Array)
 		{
-			const int index = pCrateType->SuperWeapon.Get();
-
-			if (index >= 0 && index < count && SuperWeaponTypeClass::Array[index] == pType)
-				return true;
+			for (auto const& pListed : pCrateType->SuperWeapon)
+			{
+				if (pListed == pType)
+					return true;
+			}
 		}
 
 		return false;
@@ -505,38 +505,167 @@ namespace CrateHelpers
 		}, &pCrateType->CloakAllowTypes, &pCrateType->CloakDisallowTypes);
 	}
 
-	// Promotes technos the collecting house is allowed to affect. Without Crate.Veterancy.Stack,
-	// technos already at or above the level are left alone, so a crate can never demote anything.
-	// With it, collecting again adds to the experience instead, so repeated collections climb from
-	// rookie through veteran to elite. Nothing is filtered by Trainable here: the vanilla crate
-	// does not check it either, and a type that cannot use veterancy simply ignores the rank.
+	// Promotes - or demotes - technos the collecting house is allowed to affect. Without
+	// Crate.Veterancy.Stack, the level is the rank to end up at: a positive one promotes technos
+	// below it, a negative one demotes technos above the rank it names, and neither moves a techno
+	// the wrong way. With Stack, the level is instead how much experience to add, and a negative
+	// one takes that much away with a rookie as the floor. Nothing is filtered by Trainable here:
+	// the vanilla crate does not check it either, and a type that cannot use veterancy simply
+	// ignores the rank.
 	void PromoteAffectedTargets(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector)
 	{
-		const int level = std::clamp(pCrateType->VeterancyLevel.Get(), 0, 2);
+		const int level = std::clamp(pCrateType->VeterancyLevel.Get(), -2, 2);
 		const bool stack = pCrateType->VeterancyStack.Get();
 		const int radius = ResolveRadius(pCrateType->VeterancyRadius);
-		int promoted = 0;
+		// The rank a negative level names: -1 means "no higher than a veteran".
+		const float demotedTo = static_cast<float>(-level);
+		int affected = 0;
 
 		ForEachAffectedTechno(pCrateType->VeterancyTargets.Get(), pCollector->Owner, pCell, radius, [&](TechnoClass* pTechno)
 		{
 			if (stack)
 			{
 				pTechno->Veterancy.Add(static_cast<double>(level));
+
+				// Add only clamps the ceiling, so a demotion has to stop at a rookie itself.
+				if (pTechno->Veterancy.IsNegative())
+					pTechno->Veterancy.Veterancy = 0.0f;
 			}
-			else if (pTechno->Veterancy.Veterancy < static_cast<float>(level))
+			else if (level >= 0)
 			{
-				pTechno->Veterancy.Veterancy = static_cast<float>(level);
+				if (pTechno->Veterancy.Veterancy < static_cast<float>(level))
+					pTechno->Veterancy.Veterancy = static_cast<float>(level);
+			}
+			else if (pTechno->Veterancy.Veterancy > demotedTo)
+			{
+				pTechno->Veterancy.Veterancy = demotedTo;
 			}
 
 			pTechno->Flash(100);
-			++promoted;
+			++affected;
 		}, &pCrateType->VeterancyAllowTypes, &pCrateType->VeterancyDisallowTypes);
 
-		// One line per collection, so a test that promotes nobody can be told apart from one that
+		// One line per collection, so a test that affects nobody can be told apart from one that
 		// never ran: the house, the radius, the level and the count are all in the log.
-		Debug::Log("[CrateType] [%s] promotion for house %d: level %d%s within %d cells hit %d "
+		Debug::Log("[CrateType] [%s] rank change for house %d: level %d%s within %d cells hit %d "
 			"technos.\n", pCrateType->Name.data(), pCollector->Owner->ArrayIndex, level,
-			stack ? " (stacking)" : "", radius, promoted);
+			stack ? " (stacking)" : "", radius, affected);
+	}
+
+	// Grows or clears tiberium around the crate's cell, the way the terrain type that spawns
+	// tiberium does it: the engine's own IncreaseTiberium handles the overlay, the density and the
+	// growth bookkeeping behind it, and CanTiberiumGerminate keeps the cells that cannot take ore
+	// out of the running. Everything is driven by the synchronized RNG, so every machine grows the
+	// same cells.
+	void ModifyTiberium(CrateTypeClass* pCrateType, CellClass* pCell, FootClass* pCollector)
+	{
+		const int index = pCrateType->Tiberium.Get();
+
+		if (index < 0 || index >= TiberiumClass::Array.Count)
+			return;
+
+		auto const pTiberium = TiberiumClass::Array[index];
+
+		if (!pTiberium)
+			return;
+
+		// Note that a radius of 0 means the crate's own cell here, unlike the other effects, where
+		// it would mean the whole map - covering a map in ore is not a feature anyone wants.
+		const int radius = ResolveRadius(pCrateType->TiberiumRadius);
+		const CellStruct base = pCell->MapCoords;
+		const auto cells = GeneralUtils::AdjacentCellsInRange(static_cast<unsigned int>(radius));
+
+		if (pCrateType->ClearsTiberium())
+		{
+			const int requested = std::max(pCrateType->TiberiumClearAmount.Get(), 0);
+			int cleared = 0;
+
+			for (auto const& offset : cells)
+			{
+				auto const pTarget = MapClass::Instance.TryGetCellAt(base + offset);
+
+				if (!pTarget)
+					continue;
+
+				const int contained = pTarget->GetContainedTiberiumValue();
+
+				if (contained <= 0)
+					continue;
+
+				// The cell's ore is stored as a value; the amount is in shares of the type's own
+				// value, which is what ReduceTiberium takes.
+				auto const pContained = TiberiumClass::Array.GetItemOrDefault(
+					pTarget->GetContainedTiberiumIndex());
+				const int value = pContained ? std::max(pContained->Value, 1) : 1;
+				const int shares = contained / value;
+				const int amount = requested > 0 ? std::min(requested, shares) : shares;
+
+				if (amount > 0)
+				{
+					pTarget->ReduceTiberium(amount);
+					++cleared;
+				}
+			}
+
+			if (cleared > 0)
+			{
+				Debug::Log("[CrateType] [%s] cleared tiberium from %d cells for house %d.\n",
+					pCrateType->Name.data(), cleared, pCollector->Owner->ArrayIndex);
+			}
+
+			return;
+		}
+
+		// Growing: the cells that can take this type first, then the picks from them.
+		std::vector<CellClass*> candidates;
+
+		for (auto const& offset : cells)
+		{
+			if (auto const pTarget = MapClass::Instance.TryGetCellAt(base + offset))
+			{
+				if (pTarget->CanTiberiumGerminate(pTiberium))
+					candidates.push_back(pTarget);
+			}
+		}
+
+		if (candidates.empty())
+		{
+			Debug::Log("[CrateType] [%s] found no cell within %d cells that can grow [%s]. Note that "
+				"the crate itself is an overlay on its own cell, so a Crate.Tiberium.Radius of 0 can "
+				"never grow anything.\n",
+				pCrateType->Name.data(), radius, pTiberium->ID);
+
+			return;
+		}
+
+		const int maxStage = std::max(pTiberium->NumFrames - 1, 0);
+		const int stage = pCrateType->TiberiumStage.Get() >= 0
+			? std::clamp(pCrateType->TiberiumStage.Get(), 0, maxStage) : maxStage;
+
+		int count = std::max(pCrateType->TiberiumCount.Get(), 0);
+
+		if (count == 0 || count > static_cast<int>(candidates.size()))
+			count = static_cast<int>(candidates.size());
+
+		auto& random = ScenarioClass::Instance->Random;
+
+		for (int i = static_cast<int>(candidates.size()) - 1; i > 0; --i)
+			std::swap(candidates[i], candidates[random.RandomRanged(0, i)]);
+
+		int grown = 0;
+
+		for (int i = 0; i < count; ++i)
+		{
+			if (candidates[i]->IncreaseTiberium(index, stage))
+				++grown;
+		}
+
+		if (grown > 0)
+		{
+			Debug::Log("[CrateType] [%s] grew [%s] at stage %d on %d cells for house %d.\n",
+				pCrateType->Name.data(), pTiberium->ID, stage, grown,
+				pCollector->Owner->ArrayIndex);
+		}
 	}
 
 	// Runs the actions of the named map trigger, unconditionally and as if its events had all
@@ -982,17 +1111,49 @@ namespace CrateHelpers
 		pSuper->CanHold = false;
 	}
 
-	// Applies Crate.SuperWeapon. Anything that cannot do what it was asked to is reported rather
-	// than quietly doing something else.
+	// Applies Crate.SuperWeapon: one of the listed weapons is drawn when the crate is collected, so
+	// a crate can offer a whole set without needing one crate type per weapon. Anything that cannot
+	// do what it was asked to is reported rather than quietly doing something else.
 	void ApplySuperWeapon(CrateTypeClass* pCrateType, HouseClass* pHouse)
 	{
-		auto const superIndex = pCrateType->SuperWeapon.Get();
+		auto const& weapons = pCrateType->SuperWeapon;
+
+		if (weapons.empty())
+			return;
+
+		// Only the listed weapons this house actually has a slot for take part in the draw, so one
+		// ungrantable entry does not turn an otherwise fine roll into a wasted crate. The state of
+		// the houses' super weapon slots is synchronized, so every machine narrows the list to the
+		// same entries and the synchronized RNG below keeps the draw identical.
+		std::vector<SuperWeaponTypeClass*> usable;
+		usable.reserve(weapons.size());
+
+		for (auto const& pListed : weapons)
+		{
+			if (pListed && pHouse->Supers.GetItemOrDefault(
+				SuperWeaponTypeClass::Array.FindItemIndex(pListed)))
+			{
+				usable.push_back(pListed);
+			}
+		}
+
+		if (usable.empty())
+		{
+			Debug::Log("[CrateType] [%s] has no Crate.SuperWeapon entry this house has a slot for, so "
+				"the crate does nothing with it.\n", pCrateType->Name.data());
+			return;
+		}
+
+		auto const pType = usable[ScenarioClass::Instance->Random.RandomRanged(0,
+			static_cast<int>(usable.size()) - 1)];
+
+		const int superIndex = SuperWeaponTypeClass::Array.FindItemIndex(pType);
 		auto const pSuper = pHouse->Supers.GetItemOrDefault(superIndex);
 
 		if (!pSuper)
 		{
-			Debug::Log("[CrateType] [%s] names a Crate.SuperWeapon this house has no slot for, so the "
-				"crate does nothing with it.\n", pCrateType->Name.data());
+			Debug::Log("[CrateType] [%s] drew [%s] from Crate.SuperWeapon, but this house has no slot "
+				"for it, so the crate does nothing with it.\n", pCrateType->Name.data(), pType->ID);
 			return;
 		}
 
@@ -1072,9 +1233,15 @@ namespace CrateHelpers
 		{
 			const int minMoney = pCrateType->GetMoneyMin();
 			const int maxMoney = pCrateType->GetMoneyMax();
+			int amount = ScenarioClass::Instance->Random.RandomRanged(std::min(minMoney, maxMoney),
+				std::max(minMoney, maxMoney));
 
-			pHouse->GiveMoney(ScenarioClass::Instance->Random.RandomRanged(std::min(minMoney, maxMoney),
-				std::max(minMoney, maxMoney)));
+			// A negative range takes money away, but never past an empty wallet.
+			if (amount < 0)
+				amount = -std::min(-amount, static_cast<int>(pHouse->Available_Money()));
+
+			if (amount != 0)
+				pHouse->TransactMoney(amount);
 		}
 
 		if (pCrateType->GivesSuperWeapon())
@@ -1134,6 +1301,9 @@ namespace CrateHelpers
 
 		if (pCrateType->Reshroud.Get())
 			MapClass::Instance.Reshroud(pHouse);
+
+		if (pCrateType->SpawnsTiberium() || pCrateType->ClearsTiberium())
+			ModifyTiberium(pCrateType, pCell, pCollector);
 	}
 
 	// Plays the crate's animation, sound and EVA line. This is feedback only - none of it changes
@@ -1286,7 +1456,7 @@ DEFINE_HOOK(0x442215, BuildingClass_CrateBeneath_CrateType, 0x7)
 // vanilla crate avoids this only because its grant is marked one-time and one-time weapons are
 // exempt from the scan.
 //
-// Kept here are super weapons that some [CrateTypes] entry names via Crate.SuperWeapon, and super
+// Kept here are super weapons that some [CrateTypes] entry lists in Crate.SuperWeapon, and super
 // weapons that no BuildingType can grant at all - for those, Lose has nothing legitimate to revoke.
 // The trade-off is that a building granting the same weapon no longer removes it when sold either,
 // so a mod that wants a removable super weapon should not hand that same one out with a crate.
@@ -1335,6 +1505,7 @@ DEFINE_HOOK(0x481ACE, CellClass_CollectCrate_PrepareCustomCrate, 0x5)
 	enum { SkipCollection = 0x483389 };
 
 	GET(CellClass*, pCell, ESI);
+	GET_STACK(FootClass*, pCollector, 0x4);
 
 	// A crate that was placed as a specific [CrateTypes] entry keeps that entry.
 	PendingCustomCrate = CrateHelpers::GetPlacedCrateType(pCell);
@@ -1344,6 +1515,14 @@ DEFINE_HOOK(0x481ACE, CellClass_CollectCrate_PrepareCustomCrate, 0x5)
 	{
 		// Deliberately not collected: the crate stays where it is and expires on its own, rather
 		// than turning into a payout the author did not ask for.
+		PendingCustomCrate = nullptr;
+		return SkipCollection;
+	}
+
+	if (PendingCustomCrate && !PendingCustomCrate->CanBeCollectedBy(pCollector ? pCollector->Owner : nullptr))
+	{
+		// Deliberately not collected either: a house that Crate.AllowedHouses does not list walks
+		// past the crate, which stays where it is for one that is listed to pick up.
 		PendingCustomCrate = nullptr;
 		return SkipCollection;
 	}
@@ -1358,7 +1537,8 @@ DEFINE_HOOK(0x481ACE, CellClass_CollectCrate_PrepareCustomCrate, 0x5)
 
 			// A crate type that is not collectible here must not be handed to the player just
 			// because the roll landed on it; the game keeps its own crate instead.
-			if (pRolled && (pCell->LandType != LandType::Water || pRolled->CollectOnWater.Get()))
+			if (pRolled && (pCell->LandType != LandType::Water || pRolled->CollectOnWater.Get())
+				&& pRolled->CanBeCollectedBy(pCollector ? pCollector->Owner : nullptr))
 			{
 				if (auto const pExt = CellExt::TryFetch(pCell))
 				{

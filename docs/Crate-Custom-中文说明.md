@@ -71,6 +71,7 @@ Crate.Anim=CRATEBURST          ; 采集时的动画
 | `Crate.TypeID` | 整数 | 未设 | **必填**。21 或更大，用于地图触发与 `CrateType=` 选择本类型。低于 21 会与**原版箱子索引冲突**，载入期会报错 |
 | `Crate.Chance` | 浮点 | 0 | 0.0–1.0。**仅对"拾取时掷骰"的原版箱子**生效：所有箱子类型的 Chance 之和 = 这类箱子变成自定义箱子的总概率，各自数值只决定彼此之间的分配比例。全部为 0 时**完全不消耗随机数**，不影响原版分布 |
 | `Crate.CollectOnWater` | 布尔 | true | 本箱子可否出现在水面格 |
+| `Crate.AllowedHouses` | HouseType 列表 | 空（不限制） | **仅列表中的国家单位能采集本箱子**，其他国家单位路过、箱子原样保留（会照常到期消失）。空 = 所有国家都可捡 |
 
 ---
 
@@ -80,16 +81,23 @@ Crate.Anim=CRATEBURST          ; 采集时的动画
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `Crate.Money.Min` | 整数 | 未设（不给钱） | 金额下限 |
-| `Crate.Money.Max` | 整数 | = Min | 金额上限，实际给 Min–Max 之间的随机值 |
+| `Crate.Money.Min` | 整数 | 未设（不给钱） | 金额下限。**可为负数**，负数代表扣钱 |
+| `Crate.Money.Max` | 整数 | = Min | 金额上限。实际数额在两者之间随机，两者谁大谁小都行 |
+
+> **扣钱规则**：实际数额为正 → 加钱；为负 → 扣钱。扣钱时**最多扣到 0**，不会把资金变成负数。
+> 例：`Crate.Money.Min=-1000` + `Crate.Money.Max=-300` → 随机扣 300–1000 块；`Min=-500` + `Max=500` → 随机扣钱或加钱。
 
 ### 5.2 超级武器
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `Crate.SuperWeapon` | SuperWeaponType | 空 | 授予/充能的超武 |
+| `Crate.SuperWeapon` | SuperWeaponType 列表 | 空 | 授予/充能的超武。可写多个（逗号分隔），采集时随机抽中其中一个 |
 | `Crate.SuperWeaponAction` | 枚举 | `Charge` | `Charge`=直接可发射（缺则先授予）；`Grant`=授予并正常充能；`OneTime`=授予**一次使用**（原版箱子行为） |
 | `Crate.SuperWeaponStartsReady` | 布尔 | true | false = 授予后从空充能，玩家需要等待。与 `OneTime` 配合即为"一次使用但要等充能" |
+
+> **随机抽取**：列出多个超武时，每次采集在列表内**等概率抽一个**；重复写同一项会按条目数提高其概率（相当于权重）。
+> 抽中的那一个再按 `Crate.SuperWeaponAction` / `Crate.SuperWeaponStartsReady` 处理，规则与只写一项时完全相同。
+> 例：`Crate.SuperWeapon=IronCurtain,Chronosphere,WeatherStorm` → 每次采集随机给其中一种。
 
 **关于超武存活**：crate 授予的超武受到保护，不会被引擎的科技重检（TechTree Recheck）收回——原版在**任意建筑完工**时会清除"没有任何建筑授予"的超武，crate 超武正是这类。保护规则：
 
@@ -129,7 +137,41 @@ Crate.Anim=CRATEBURST          ; 采集时的动画
 
 **放置规则**：每个单位独占一格，格上不能有建筑/车辆/步兵；水面格与陆地的匹配按类型的 `Naval` 决定；飞机只要求格子在图内。范围内放不下时写日志说明缺员数量。
 
-### 5.5 生成建筑
+### 5.5 矿（Tiberium / 矿石）
+
+在箱子周围**生成**或**清除**矿。
+
+| 键 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `Crate.Tiberium` | 矿类型名 | 空（不处理矿） | 取 `[Tiberiums]` 段的类型 ID，如 `Riparius`（黄矿）、`Cruentus`（蓝矿）、`Vinifera`、`Aboreus` |
+| `Crate.Tiberium.Count` | 整数 | 1 | 生成几格；**0 = 范围内所有可生长格** |
+| `Crate.Tiberium.Stage` | 整数 | -1 | 矿的密度阶段；**-1 = 该类型的最高阶段**（满矿），0 = 最稀。超范围会自动钳制 |
+| `Crate.Tiberium.Radius` | 整数 | 跟随 CrateRadius | 范围（格）。**注意：此处的 0 = 仅箱子所在格**，与其它效果的“0 = 全图”不同（避免整张地图刷矿） |
+| `Crate.Tiberium.Clear` | 布尔 | false | true = **清除**范围内已有的矿，而不是生成 |
+| `Crate.Tiberium.ClearAmount` | 整数 | 0 | 清除模式下**每格清除多少矿**；0 = 把该格清空 |
+
+```ini
+; 采集后在周围长出一片矿
+Crate.Tiberium=Riparius
+Crate.Tiberium.Count=3
+Crate.Tiberium.Stage=-1        ; 满矿
+Crate.Tiberium.Radius=2
+
+; 或者反过来：采完把一片矿清掉
+Crate.Tiberium=Riparius        ; 仍需写明类型（用于判定与朗读日志）
+Crate.Tiberium.Clear=true
+Crate.Tiberium.Radius=3
+Crate.Tiberium.ClearAmount=0   ; 全清
+```
+
+实现要点：
+
+- 生成走引擎原生的 `CellClass::IncreaseTiberium`——**矿的 overlay、密度、生长/扩散登记都由引擎自己处理**，与地形（TerrainType）长矿是同一套机制；
+- 只会挑选**能生长该矿种**的格子（`CanTiberiumGerminate`），水面、建筑格等自动排除；没有可用格时写日志；
+- 多格选择使用**多人同步随机数**洗牌，联机时各机器生长相同的格子；
+- 清除按格子**实际矿量**计算（依据该矿类型的 `Value`），不会出现负矿；`ClearAmount` 大于该格矿量时按实际清空。
+
+### 5.6 生成建筑
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
@@ -242,9 +284,13 @@ Crate.Heal.DisallowTypes=GI           ; 这些类型永不被治疗
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `Crate.Veterancy.Targets` | AffectedHouse | none | 谁被晋升 |
-| `Crate.Veterancy.Level` | 整数 | 0 | 目标军衔：1 = 老兵，2 = 精英；大于 2 会被钳制并报错。**为 0 时本效果什么也不做** |
-| `Crate.Veterancy.Stack` | 布尔 | false | true = 在现有经验上**累加**（吃两次 `Level=1` 即精英）；false = 封顶到 `Level`，只升不降 |
+| `Crate.Veterancy.Level` | 整数 | 0 | 目标军衔：1 = 老兵，2 = 精英；**负数则降级**，-1 降到老兵、-2 降到新兵。超出 ±2 会被钳制并报错。**为 0 时本效果什么也不做** |
+| `Crate.Veterancy.Stack` | 布尔 | false | true = 在现有经验上**累加**（吃两次 `Level=1` 即精英），负数为**扣经验**；false = 设为 `Level` 对应军衔，只升不降（负数则只降不升） |
 | `Crate.Veterancy.Radius` | 整数 | 跟随 CrateRadius | 范围 |
+
+> **负数语义**：非 `Stack` 模式下 `Level` 是"最终军衔"——正数只升、负数只降，方向不对的目标不处理；
+> 例如 `Level=-1` 会把精英降为老兵，而对新兵没有作用。`Stack=true` 时 `Level` 是"增量"：
+> `Level=-1` 从当前经验扣掉 1 级，**下限为新兵**（不会出现负经验）。
 
 不检查 `Trainable`（与原版箱子一致）：不能获得经验的类型只是忽略军衔。
 
@@ -315,7 +361,7 @@ Crate.Heal.DisallowTypes=GI           ; 这些类型永不被治疗
 所有配置问题都会写进 `debug.log`（前缀 `[CrateType]`），**不会静默忽略**。常见几类：
 
 - `Crate.TypeID` 缺失或重复、低于 21；
-- 键值越界：`Crate.Chance` 超出 0–1、`Crate.Units.Level` 超出 0–2、`Crate.Veterancy.Level` 超出 0–2、`Radius` 为负、`Multiplier` ≤ 0、`MaxMultiplier` ≤ 1；
+- 键值越界：`Crate.Chance` 超出 0–1、`Crate.Units.Level` 超出 0–2、`Crate.Veterancy.Level` 超出 −2–2、`Radius` 为负、`Multiplier` ≤ 0、`MaxMultiplier` ≤ 1；
 - 组合错误：`MinDist > MaxDist`（自动交换并提示）、`Arc` 没有 `Direction`、`MaxMultiplier` 没有 `AllowStack`、只设 `Multiplier`/`Radius` 而没有对应 `Targets`；
 - 尺寸不匹配：`Crate.Units.Count` 列表长度与 `Crate.Units` 不符、`RandomWeights` 条目数不符；
 - 引用错误：`Crate.SuperWeapon` 指向不存在的类型、`Crate.Trigger` 找不到触发器、`Crate.DefaultRemindType` 名字无效；
@@ -411,11 +457,13 @@ CrateType=SUPPLY                  ; 这个单位被摧毁时掉落补给箱
 | `Crate.Units.Level` | `Crate.Units` 非空 | 日志：*sets Crate.Units.Level without Crate.Units* |
 | `Crate.Units.MinDist` / `.MaxDist` / `.Direction` / `.Arc` | `Crate.Units` 非空 | 无（列表为空时不会被读取） |
 | `Crate.SpawnAtCollector` | `Crate.Units` 或 `Crate.Building` 至少一个 | 日志：*sets Crate.SpawnAtCollector without Crate.Units or Crate.Building* |
+| 任意 `Crate.Tiberium.*` 设置 | 设置了 `Crate.Tiberium` | 日志：*sets Crate.Tiberium settings without Crate.Tiberium, so they do nothing* |
+| `Crate.Tiberium.ClearAmount` | `Crate.Tiberium.Clear=true` | 日志：*sets Crate.Tiberium.ClearAmount without Crate.Tiberium.Clear* |
 | `Crate.Building.Buildup` / `.MinDist` / `.MaxDist` / `.Direction` / `.Arc` | 设置了 `Crate.Building` | 日志：*sets Crate.Building settings without Crate.Building* |
 | `Crate.Invulnerability.Duration` | `Crate.Invulnerability.Targets` 非 none | 日志：*sets ... Duration without ... Targets* |
 | `Crate.EMP.Duration` | `Crate.EMP.Targets` 非 none | 同上 |
-| `Crate.Veterancy.Level` / `.Stack` | `Crate.Veterancy.Targets` 非 none | 日志：*sets ... Targets without a positive ... Level* |
-| `Crate.Veterancy.Level` 为 0 | 必须 ≥ 1 | 日志同上——**Level=0 时晋升完全不发生**（最常见误配） |
+| `Crate.Veterancy.Level` / `.Stack` | `Crate.Veterancy.Targets` 非 none | 日志：*sets ... Targets without a non-zero ... Level* |
+| `Crate.Veterancy.Level` 为 0 | 必须非 0（正数提升、负数降级） | 日志同上——**Level=0 时晋升与降级都不发生**（最常见误配） |
 | 任意 `*.Radius` | 对应 `*Targets` 非 none | `Crate.Cloak.Radius` 有专门日志；其余为通用提示 |
 | 任意 `*.AllowTypes` / `*.DisallowTypes` | 对应 `*Targets` 非 none | 无 Targets 时不会被读取（效果本身已关闭） |
 | 同一类型同时出现在 `AllowTypes` 与 `DisallowTypes` | —— | 日志：*lists [X] in both ... The disallow list wins* |
@@ -441,7 +489,7 @@ CrateType=SUPPLY                  ; 这个单位被摧毁时掉落补给箱
 |---|---|
 | `Crate.Chance` | 钳制到 0.0–1.0（它是概率，不是权重） |
 | `Crate.Units.Level` | 钳制到 0–2 |
-| `Crate.Veterancy.Level` | 钳制到 0–2 |
+| `Crate.Veterancy.Level` | 钳制到 −2–2 |
 | 任意 `*.Radius` | 负值 → 回退到 `CrateRadius` 默认 |
 | `Crate.Armor/Firepower/Speed.Multiplier` | ≤ 0 → 回退到 `[Powerups]` 默认 |
 | `...MaxMultiplier` | ≤ 1.0 → 丢弃并提示 |
@@ -466,6 +514,6 @@ CrateType=SUPPLY                  ; 这个单位被摧毁时掉落补给箱
 
 ### 12.5 总是有效（不受前提影响）
 
-`Crate.Anim`、`Crate.Sound`、`Crate.EVA`、`Crate.Money.Min/Max`（只要 Min 有值）、`Crate.Weapon`、`Crate.Reveal`、`Crate.Reshroud`、`Crate.CollectOnWater`、`Crate.Units` / `Crate.Building`（生成列表不受类型筛选影响）。
+`Crate.Anim`、`Crate.Sound`、`Crate.EVA`、`Crate.Money.Min/Max`（只要 Min 有值）、`Crate.Weapon`、`Crate.Reveal`、`Crate.Reshroud`、`Crate.CollectOnWater`、`Crate.Units` / `Crate.Building`（生成列表不受类型筛选影响）、`Crate.Tiberium` 及其配套键。
 
 > 反馈类键（Anim/Sound/EVA）**不影响游戏状态**，即使该箱子没有任何效果键也会播放——这正是“只做装饰的箱子”的用法。
