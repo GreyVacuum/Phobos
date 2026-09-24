@@ -1505,7 +1505,12 @@ DEFINE_HOOK(0x481ACE, CellClass_CollectCrate_PrepareCustomCrate, 0x5)
 	enum { SkipCollection = 0x483389 };
 
 	GET(CellClass*, pCell, ESI);
-	GET_STACK(FootClass*, pCollector, 0x4);
+
+	// The engine keeps the collector in EDI for the whole function: it is loaded from the single
+	// argument right at the top (mov edi, [ebp+arg_0] at 0x481A0F) and reloaded after every call
+	// that clobbers it, so EDI still holds it here. There is no collector on the stack at this
+	// point - this hook runs mid-function, where [esp+4] is just some stack value.
+	GET(FootClass*, pCollector, EDI);
 
 	// A crate that was placed as a specific [CrateTypes] entry keeps that entry.
 	PendingCustomCrate = CrateHelpers::GetPlacedCrateType(pCell);
