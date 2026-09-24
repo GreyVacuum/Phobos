@@ -134,7 +134,7 @@
 #define PHOBOS_USEBY_DAY 31
 
 // How many days before the deadline the on-screen countdown warning starts being drawn.
-#define PHOBOS_USEBY_WARNING_DAYS 7
+#define PHOBOS_USEBY_WARNING_DAYS 223
 
 #pragma endregion
 

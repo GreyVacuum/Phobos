@@ -41,7 +41,7 @@ bool Phobos::Optimizations::DisablePsychicDetectable = true;
 #ifdef NIGHTLY
 const wchar_t* Phobos::VersionDescription = L"" PRODUCT_NAME " " PRODUCT_VERSION L". DO NOT SHIP IN MODS!";
 #elif defined(TESTING_BUILD)
-const wchar_t* Phobos::VersionDescription = L"" PRODUCT_NAME " " PRODUCT_VERSION L". Please test the build before shipping.";
+const wchar_t* Phobos::VersionDescription = L"" PRODUCT_NAME " " L" GreyVacuum - Experimental testing ";
 #endif
 
 // See PHOBOS_USEBY_* in Phobos.version.h. Stays empty unless the build is close to expiring.
