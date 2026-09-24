@@ -452,6 +452,8 @@ HideShakeEffects=false           ; boolean
 - [Customize `MissileSafetyAltitude` and whether missiles fly to the target or climb when losing target](Fixed-or-Improved-Logics.md#customize-missilesafetyaltitude-and-whether-missiles-fly-to-the-target-or-climb-when-losing-target) (by NetsuNegi & Noble_Fish)
 - [Customize `DefaultToGuardArea` per gunner mode](Fixed-or-Improved-Logics.md#customize-defaulttoguardarea-per-gunner-mode) (by Noble_Fish)
 - Attach effect when weapon fire (by CrimRecya)
+- Customize the country displayed in `Sight` (by FlyStar)
+- [Custom crate types](New-or-Enhanced-Logics.md#custom-crate-types) (by Otamaa, based on the original 2022 proof of concept)
 
 #### Vanilla fixes:
 - Fixed the bug where a building with `Factory=BuildingType` owned by the AI did not play `ProductionAnim` when placing a produced building (by Noble_Fish)

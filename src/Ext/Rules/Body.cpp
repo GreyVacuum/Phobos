@@ -16,6 +16,7 @@
 #include <New/Type/BannerTypeClass.h>
 #include <New/Type/InsigniaTypeClass.h>
 #include <New/Type/SelectBoxTypeClass.h>
+#include <New/Type/CrateTypeClass.h>
 #include <TiberiumClass.h>
 #include <Ext/Tiberium/Body.h>
 
@@ -63,6 +64,7 @@ void RulesExt::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
 	AttachEffectTypeClass::LoadFromINIList(pINI);
 	BannerTypeClass::LoadFromINIList(pINI);
 	InsigniaTypeClass::LoadFromINIList(pINI);
+	CrateTypeClass::LoadFromINIList(pINI);
 
 	Data->LoadBeforeTypeData(pThis, pINI);
 }

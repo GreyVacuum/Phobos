@@ -13,6 +13,16 @@
   <!-- Import props -->
   <Import Project="$(ThisDir)\Phobos.props" />
   <Import Project="$(YRppDir)\YRpp.props" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <MinimalRebuild>false</MinimalRebuild>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <MinimalRebuild>false</MinimalRebuild>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <!-- Resource files -->
   <ItemGroup>
     <ResourceCompile Include="src\Misc\ExceptionHandler.rc" />
@@ -95,6 +105,7 @@
     <!-- src\Ext\Cell -->
     <ClCompile Include="src\Ext\Cell\Body.cpp" />
     <ClCompile Include="src\Ext\Cell\Hooks.cpp" />
+    <ClCompile Include="src\Ext\Cell\Hooks.Crate.cpp" />
     <!-- src\Ext\EBolt -->
     <ClCompile Include="src\Ext\EBolt\Body.cpp" />
     <ClCompile Include="src\Ext\EBolt\Hooks.cpp" />
@@ -269,6 +280,7 @@
     <!-- src\New\Type -->
     <ClCompile Include="src\New\Type\AttachEffectTypeClass.cpp" />
     <ClCompile Include="src\New\Type\BannerTypeClass.cpp" />
+    <ClCompile Include="src\New\Type\CrateTypeClass.cpp" />
     <ClCompile Include="src\New\Type\DigitalDisplayTypeClass.cpp" />
     <ClCompile Include="src\New\Type\InsigniaTypeClass.cpp" />
     <ClCompile Include="src\New\Type\LaserTrailTypeClass.cpp" />

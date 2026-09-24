@@ -47,6 +47,16 @@ public:
 	std::vector<RadLevel> RadLevels { };
 	int InfantryCount{ 0 };
 
+	// Crate.TypeID of the custom crate placed on this cell, -1 when the cell holds no custom crate.
+	// The id rather than a list position, so it keeps naming the same crate type even if the mod
+	// reorders its [CrateTypes] list.
+	int CustomCrateTypeID { -1 };
+
+	// Vanilla crate powerup indices occupy 0-18 and 19 marks "no powerup", so the game
+	// treats any higher value as "roll a random crate". Custom crates reuse that slot and
+	// are intercepted before the roll by CellClass::CollectCrate.
+	static constexpr unsigned char CustomCrateOverlayMarker = 20;
+
 	CellExt(CellClass* OwnerObject) : AbstractExt(OwnerObject)
 	{ }
 

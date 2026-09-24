@@ -3931,3 +3931,206 @@ CanTargetVeterancy=all      ; List of Affected Veterancy Enumeration (none|rooki
 ```{note}
 `CanTarget` explicitly requires either `all` or `empty` to be listed for the weapon to be able to fire at cells containing no TechnoTypes.
 ```
+
+### Custom crate types
+
+- Every crate type carries a `Crate.TypeID`, and that number is how everything else selects it: a `CrateType` key on a techno type, and the crate type parameter of map trigger action `108 Create Crate`. Ids start at `21` so they can never be taken for a vanilla crate index.
+- A `CrateType` key also accepts the crate type's name, a vanilla crate name (`Money`, `Unit`, `HealBase`, `Cloak`, `Explosion`, `Napalm`, `Squad`, `Darkness`, `Reveal`, `Armor`, `Speed`, `Firepower`, `ICBM`, `Invulnerability`, `Veteran`, `IonStorm`, `Gas`, `Tiberium`, `Pod`) or `Random`. Leaving it out keeps whatever the game does on its own, and a value that resolves to nothing is reported instead of quietly selecting a different crate.
+- A crate type is described by listing what it does. Every key acts on its own and any combination of them works, so there is no crate "kind" to choose between and no key that is ignored because a different key picked a different kind.
+- Custom crates are handled independently of the vanilla `[Powerups]` table, so no vanilla powerup slot has to be enabled or reconfigured for them to work.
+
+In `rulesmd.ini`:
+```ini
+[CrateTypes]
+0=MYCRATE
+
+[SOMEUNIT]                     ; VehicleType with CarriesCrate=yes, or BuildingType with CrateBeneath=yes
+CrateType=MYCRATE              ; crate this type places. Accepts the crate type's name, its Crate.TypeID,
+                               ; a vanilla crate name, or Random for a crate whose type is rolled
+                               ; when it is collected. Leave out to keep the game's own behaviour
+
+[MYCRATE]
+Crate.TypeID=21                ; integer, 21 or higher - how maps and triggers select this crate type
+
+; Collecting the crate. Set as many of these as you like, they all apply.
+Crate.Money.Min=0              ; integer, lower cash amount. Negative values take money away
+                               ; instead of granting it, but never past an empty wallet
+Crate.Money.Max=0              ; integer, upper cash amount, defaults to Crate.Money.Min. The
+                               ; order of the two does not matter, a random amount between
+                               ; them is granted (positive) or taken (negative)
+Crate.SuperWeapon=             ; list of SuperWeaponTypes - one of them is drawn at random when the
+                               ; crate is collected, so a crate can offer a whole set. A repeated
+                               ; entry takes a larger share of the draws
+Crate.SuperWeaponAction=Charge ; enum (Charge|Grant|OneTime) - Charge makes it ready to fire, Grant
+                               ; hands it over to recharge as usual, OneTime hands over a single use
+Crate.SuperWeaponStartsReady=true ; boolean - false hands the weapon over empty, so the player has to
+                                  ; wait for it to charge. With OneTime this gives one use, earned
+Crate.Weapon=                  ; WeaponType, detonated at the crate's cell
+Crate.Units=                   ; list of VehicleTypes, InfantryTypes and AircraftTypes, spawned
+                               ; next to the crate - aircraft come out at cruise height
+Crate.Units.Count=1            ; integer or list of integers. A single value draws that many
+                               ; entries at random; a list of exactly the Units' length spawns each
+                               ; entry that exact number of times instead - Count=2,1 with two
+                               ; entries always gives two of the first and one of the second
+Crate.Units.RandomWeights=     ; list of integers, one weight per Crate.Units entry, honoured when
+                               ; the crate draws what to spawn - the same system the LimboDelivery
+                               ; super weapon logic uses. Weights shape the draws, they do not
+                               ; multiply the spawn count
+Crate.Units.RandomWeights0=    ; further weight groups, RandomWeights1 upwards - with RollChances,
+                               ; draw number N uses group N and falls back to the last group
+                               ; present; without RollChances every draw uses the first group
+Crate.Units.RollChances=       ; list of floats, 0.0-1.0 - one independent roll per draw, and each
+                               ; roll that passes spawns one entry picked with its weights group.
+                               ; The number of chances decides how many are spawned, overriding
+                               ; Units.Count
+Crate.Units.Level=0            ; integer, the rank all of the spawned units come out with - 0 rookie,
+                               ; 1 veteran, 2 elite
+Crate.Units.MinDist=1          ; integer, cells - how close to the base cell the units may be placed
+Crate.Units.MaxDist=10         ; integer, cells - how far from the base cell to search for spots.
+                               ; Every entry gets a cell of its own, so nothing is crushed or
+                               ; displaced
+Crate.Units.Direction=Random   ; N, NE, E, SE, S, SW, W, NW (or the long forms) - narrows the search
+                               ; to that compass sector relative to the base cell. Random checks
+                               ; each ring in a shuffled order so the entries land in random
+                               ; directions. Any searches all
+Crate.Units.Arc=45             ; integer, degrees - the width of the accepted sector, +- half of it
+                               ; around the direction. Only meaningful with a Direction
+Crate.Tiberium=                ; TiberiumType ([Tiberiums] name, e.g. Riparius, Cruentus) - grows
+                               ; that ore on the cells around the crate, or clears what is there
+Crate.Tiberium.Count=1         ; integer - how many cells to touch, 0 for every cell in range that
+                               ; can take the ore
+Crate.Tiberium.Stage=-1        ; integer - density to grow to, -1 for the fullest the type supports
+Crate.Tiberium.Radius=         ; integer, cells - range. Unlike the other radius keys, 0 means the
+                               ; crate's own cell only, not the whole map
+Crate.Tiberium.Clear=false     ; boolean - clears the ore in range instead of growing it
+Crate.Tiberium.ClearAmount=0   ; integer - how much ore to take per cell while clearing, 0 for all
+Crate.Building=                ; BuildingType, built next to the crate for the collecting house,
+                               ; completed at once without a buildup sequence. The cell is picked
+                               ; with the game's own placement check plus an occupant check on
+                               ; every foundation cell, so nothing gets crushed or displaced
+Crate.Building.Buildup=false   ; boolean - when set, the building plays its buildup sequence and
+                               ; finishes constructing normally instead of appearing completed
+Crate.Building.MinDist=1       ; integer, cells - how close to the base cell the building may land
+Crate.Building.MaxDist=12      ; integer, cells - how far from the base cell to search for a spot
+Crate.Building.Direction=Random ; N, NE, E, SE, S, SW, W, NW (or the long forms) - narrows the search
+                               ; to that compass sector relative to the base cell. Random checks
+                               ; each ring's cells in a shuffled order, so the building lands in a
+                               ; random direction. Any searches all of them in fixed order
+Crate.Building.Arc=45          ; integer, degrees - the width of the accepted sector. Only used with
+                               ; a direction; 45 accepts the 45 degrees around it
+Crate.HealTargets=none         ; List of Affected House Enumeration (none|owner|allies|enemies|neutral|team|others|all)
+Crate.HealWarhead=             ; WarheadType for the healing call, defaults to [CombatDamage] -> C4Warhead
+Crate.Heal.Radius=             ; integer, cells - limits the healing to this many cells around the
+Crate.Heal.AllowTypes=        ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Heal.DisallowTypes=     ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+                               ; crate's cell. An explicit 0 means no limit
+Crate.Invulnerability.Targets=none ; List of Affected House Enumeration - who takes no damage for a while
+Crate.Invulnerability.Duration=0   ; integer, frames - how long, 15 frames are a second
+Crate.Invulnerability.Radius=  ; integer, cells - limits who is protected. 0 means no limit
+Crate.Invulnerability.AllowTypes= ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Invulnerability.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.EMP.Targets=none         ; List of Affected House Enumeration - who is frozen
+Crate.EMP.Duration=0           ; integer, frames - how long, 15 frames are a second
+Crate.EMP.Radius=              ; integer, cells - limits who is frozen. 0 means no limit
+Crate.EMP.AllowTypes=         ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.EMP.DisallowTypes=      ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Veterancy.Targets=none   ; List of Affected House Enumeration - who is promoted or demoted
+Crate.Veterancy.Level=0        ; integer, 1 promotes to veteran, 2 to elite. A negative level
+                               ; demotes instead, -1 to veteran and -2 to rookie. Technos already
+                               ; at or past the level are left alone (unless Crate.Veterancy.Stack
+                               ; is set), so a promotion never demotes and a demotion never promotes
+Crate.Veterancy.Stack=false    ; boolean - when set, collecting the crate again adds to the existing
+                               ; experience instead of capping at the level, so two Level=1
+                               ; collections make an elite. A negative level subtracts that much
+                               ; experience instead, with a rookie as the floor
+Crate.Veterancy.Radius=        ; integer, cells - limits who is promoted. 0 means no limit
+Crate.Veterancy.AllowTypes=   ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Veterancy.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Trigger=                 ; the id of a trigger in the map - its actions fire when the crate is
+                               ; collected, unconditionally and without consulting its events
+Crate.Reveal=false             ; boolean, removes the shroud for the collecting house, the way the
+                               ; vanilla Reveal crate does
+Crate.SpawnAtCollector=false   ; boolean, spawns Crate.Units and Crate.Building around the collecting
+                               ; techno instead of around the crate's cell
+Crate.Cloak.Targets=none       ; List of Affected House Enumeration - who is cloaked. Types that
+                               ; cannot cloak (Cloakable=no) are left as they are
+Crate.Cloak.Radius=           ; integer, cells - limits who is cloaked. 0 means no limit
+Crate.Cloak.AllowTypes=       ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Cloak.DisallowTypes=    ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Armor.Targets=none       ; List of Affected House Enumeration - who gains armor
+Crate.Armor.Multiplier=        ; floating point value - armor is multiplied by this, once. Unset
+                               ; follows the [Powerups] Armor parameter (1.5 in the stock rules).
+                               ; A techno already upgraded is left alone, the way the vanilla
+                               ; crate skips anything whose multiplier is no longer 1.0
+Crate.Armor.Radius=            ; integer, cells - limits who is affected. 0 means no limit
+Crate.Armor.AllowTypes=       ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Armor.DisallowTypes=    ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Armor.AllowStack=false   ; boolean - when set, a techno that was already upgraded is
+                               ; multiplied again by every further collection. The vanilla crates
+                               ; never stack, which is what the default keeps
+Crate.Armor.MaxMultiplier=     ; floating point value - the highest the multiplier may reach while
+                               ; stacking. Unset means no limit. Without AllowStack it never
+                               ; applies, since the first upgrade is the only one
+Crate.Firepower.Targets=none   ; List of Affected House Enumeration - who gains firepower
+Crate.Firepower.Multiplier=    ; floating point value - same rules, [Powerups] Firepower is 2.0
+Crate.Firepower.Radius=        ; integer, cells - limits who is affected. 0 means no limit
+Crate.Firepower.AllowTypes=   ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Firepower.DisallowTypes= ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Firepower.AllowStack=false ; boolean - same rules as Crate.Armor.AllowStack
+Crate.Firepower.MaxMultiplier= ; floating point value - same rules as Crate.Armor.MaxMultiplier
+Crate.Speed.Targets=none       ; List of Affected House Enumeration - who gains speed. Only
+                               ; things that move on the ground or water: the vanilla crate skips
+                               ; aircraft, whose speed the flight logic owns
+Crate.Speed.Multiplier=        ; floating point value - same rules, [Powerups] Speed is 1.2
+Crate.Speed.Radius=            ; integer, cells - limits who is affected. 0 means no limit
+Crate.Speed.AllowTypes=       ; list of TechnoTypes - only these may be affected. Empty admits every type
+Crate.Speed.DisallowTypes=    ; list of TechnoTypes - these are never affected, even when listed in AllowTypes
+Crate.Speed.AllowStack=false   ; boolean - same rules as Crate.Armor.AllowStack
+Crate.Speed.MaxMultiplier=     ; floating point value - same rules as Crate.Armor.MaxMultiplier
+                               ; All radius keys follow the [CrateRules] -> CrateRadius default
+                               ; while they are not set (a 3.0 there means 3 cells)
+Crate.Reshroud=false           ; boolean, reshrouds the map for the collecting house
+
+; Feedback. None of these change the game state.
+Crate.Anim=                    ; AnimationType, played at the crate's cell
+Crate.Sound=                   ; sound (VocClass), played at the crate's cell
+Crate.EVA=                     ; EVA (VoxClass), played for the collecting player
+Crate.DefaultRemindType=       ; the name of a vanilla crate effect from [Powerups] - Unit, Money,
+                               ; Heal, Armor, Speed, FirePower, Veteran, ICBM and so on. Plays
+                               ; that type's pickup animation, and its EVA line for the three
+                               ; upgrade crates, for anything the keys above leave unset. The
+                               ; explicit keys always win. Note the vanilla pickup sounds are
+                               ; part of the animations themselves
+
+; Where the crate may appear on its own.
+Crate.Chance=0.0               ; floating point value, 0.0-1.0 - probability that a crate whose type
+                               ; is rolled on pickup becomes this one
+Crate.CollectOnWater=true      ; boolean, false leaves the crate uncollected on water
+Crate.AllowedHouses=           ; list of HouseTypes - only units of these houses may collect the
+                               ; crate, everyone else walks past it and the crate stays where it
+                               ; is. Empty lets every house collect it
+```
+
+```{note}
+`Crate.TypeID` is required for a crate type to be selectable at all - it is the only thing a map trigger can carry - so a crate type without one, or with one in the vanilla range, is reported on load.
+
+`Crate.HealTargets` decides who a healing crate heals, relative to the house that collected it.
+
+`Crate.Chance` is a probability, not a weight, so it does not depend on the values in your `[Powerups]` table. The sum over all crate types is how likely a rolled crate is to be a custom one, and the individual values only set the split between them - two crate types at `0.25` each make half of all rolled crates custom, one third of them each.
+
+`Crate.SuperWeaponAction=Charge` hands the weapon over first when the collecting house does not have it yet, so a crate is never wasted on a house that cannot use it. `Grant` and `OneTime` on the other hand do nothing if the house already has the weapon, and say so in the log. A handed over weapon is also added to the sidebar of the player that collected the crate, which is what makes it usable - the engine on its own only records that the house has it.
+
+There is no option to make a crate fire a super weapon by itself. The engine's launch entry points take an argument the DLL cannot supply correctly, do nothing at all for super weapon kinds outside the built-in set, and some kinds need state a crate cannot provide - an automatic shot would work for some super weapons and quietly fail for others. `OneTime` gives the player a single use to aim themselves, and `Crate.Weapon` fires an ordinary weapon at the crate's cell.
+
+Nothing pays out anything you did not ask for: a crate that cannot apply one of its effects reports it in the log rather than turning into money, and `Crate.CollectOnWater=false` leaves the crate where it is instead of substituting a reward.
+
+Some crate ideas the vanilla powerup list names but never implemented are covered by the keys above: a squad is `Crate.Units` with `Crate.Units.Count`, a drop pod landing is `Crate.Units` together with the pod's animations in `Crate.Anim`, invulnerability is `Crate.Invulnerability`, a promotion is `Crate.Veterancy`, and revealing the map is `Crate.Reveal`. An ion storm is not among them - Yuri's Revenge has no way to start one, only a leftover flag from Tiberian Sun, so a crate cannot do it.
+
+`Crate.Trigger` runs the actions of the named trigger on every machine at the same point in the game, so it stays synchronized in multiplayer. The trigger is named by its id, the string the map itself uses to reference it, not by its editor name. Its actions fire whether or not its events would have allowed it - build the trigger with no events for this purpose.
+
+A super weapon handed over with `Grant` or `Charge` is protected from the engine's tech recheck: normally the game takes a super weapon away from a house that owns no building granting it, which would strip a crate-granted weapon the moment any building finishes. The protection covers every super weapon some `[CrateTypes]` entry names via `Crate.SuperWeapon`, and every super weapon no building grants at all, and each such save writes a line to the log. The one trade-off is that a building granting the same weapon no longer removes it when sold either - hand a super weapon out with a crate only if you want it to stay.
+
+The filtered effects (`Crate.HealTargets`, `Crate.Invulnerability`, `Crate.EMP` and `Crate.Veterancy`) cover every techno they match across the whole map unless a `Radius` key limits them to the area around the crate's cell. Note that invulnerability shares the iron curtain's expiry behaviour: infantry and other organic units die when their timer runs out, exactly as they do under the super weapon.
+
+Each veterancy collection writes one line to the log (`rank change ... level ... within ... cells hit ... technos`), so a test that affects nobody can be told apart from one whose keys did not line up - most commonly a missing `Crate.Veterancy.Level`, which defaults to 0 and changes nothing.
+```
