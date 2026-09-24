@@ -44,6 +44,9 @@ const wchar_t* Phobos::VersionDescription = L"" PRODUCT_NAME " " PRODUCT_VERSION
 const wchar_t* Phobos::VersionDescription = L"" PRODUCT_NAME " " PRODUCT_VERSION L". Please test the build before shipping.";
 #endif
 
+// See PHOBOS_USEBY_* in Phobos.version.h. Stays empty unless the build is close to expiring.
+wchar_t Phobos::UseByDate::WarningText[0x80] { };
+
 
 void Phobos::CmdLineParse(char** ppArgs, int nNumArgs)
 {
@@ -188,6 +191,88 @@ static void ActivateCommonControls6()
 	}
 }
 
+// Serial day number for a proleptic Gregorian date, counted from 1970-01-01 (Howard Hinnant's
+// days_from_civil). Plain calendar arithmetic is used rather than FILETIME math so that DST and
+// timezone shifts cannot make the remaining-days count drift by one.
+static int DaysFromCivil(int year, int month, int day)
+{
+	year -= month <= 2;
+
+	const int era = (year >= 0 ? year : year - 399) / 400;
+	const unsigned int yearOfEra = static_cast<unsigned int>(year - era * 400);
+	const unsigned int dayOfYear = (153u * static_cast<unsigned int>(month + (month > 2 ? -3 : 9)) + 2u) / 5u
+		+ static_cast<unsigned int>(day) - 1u;
+	const unsigned int dayOfEra = yearOfEra * 365u + yearOfEra / 4u - yearOfEra / 100u + dayOfYear;
+
+	return era * 146097 + static_cast<int>(dayOfEra) - 719468;
+}
+
+int Phobos::UseByDate::DaysLeft()
+{
+	SYSTEMTIME now { };
+	GetLocalTime(&now);
+
+	const int today = DaysFromCivil(now.wYear, now.wMonth, now.wDay);
+	const int deadline = DaysFromCivil(PHOBOS_USEBY_YEAR, PHOBOS_USEBY_MONTH, PHOBOS_USEBY_DAY);
+
+	return deadline - today;
+}
+
+// Enforced from ExeRun, which runs at the game's CRT entry point - the earliest point Phobos
+// gets control at. By then SyringeEx has already written every hook into the game binary, so a
+// hook-level "disable" is not possible: refusing to run means terminating the process.
+void Phobos::UseByDate::Enforce()
+{
+	// The time limit is a release-only measure. Debug builds must never be affected by it, so
+	// that working on Phobos itself stays possible.
+#ifndef DEBUG
+	const int daysLeft = DaysLeft();
+
+	if (daysLeft < 0)
+	{
+		wchar_t message[0x200];
+		swprintf(message, std::size(message),
+			L"" PRODUCT_NAME " " PRODUCT_VERSION L" could only be used until %04d-%02d-%02d and has expired.\n\n"
+			L"Please replace it with a newer build.",
+			PHOBOS_USEBY_YEAR, PHOBOS_USEBY_MONTH, PHOBOS_USEBY_DAY);
+
+		// The game's own logger is not up yet at this point, so Debug::Log (which calls into
+		// the game) must not be used here. The deferred variant only fills a Phobos-side
+		// buffer and is flushed by CmdLineParse once logging works.
+		Debug::LogDeferred("[Phobos] Use-by date %04d-%02d-%02d has passed, refusing to run.\n",
+			PHOBOS_USEBY_YEAR, PHOBOS_USEBY_MONTH, PHOBOS_USEBY_DAY);
+
+		MessageBoxW(NULL, message, L"" PRODUCT_NAME " - expired build", MB_OK | MB_ICONERROR);
+
+		ExitProcess(1u);
+	}
+
+	if (daysLeft <= PHOBOS_USEBY_WARNING_DAYS)
+	{
+		if (daysLeft == 0)
+		{
+			swprintf(WarningText, std::size(WarningText),
+				L"" PRODUCT_NAME " expires today (%04d-%02d-%02d)",
+				PHOBOS_USEBY_YEAR, PHOBOS_USEBY_MONTH, PHOBOS_USEBY_DAY);
+		}
+		else if (daysLeft == 1)
+		{
+			swprintf(WarningText, std::size(WarningText),
+				L"" PRODUCT_NAME " expires in 1 day (%04d-%02d-%02d)",
+				PHOBOS_USEBY_YEAR, PHOBOS_USEBY_MONTH, PHOBOS_USEBY_DAY);
+		}
+		else
+		{
+			swprintf(WarningText, std::size(WarningText),
+				L"" PRODUCT_NAME " expires in %d days (%04d-%02d-%02d)",
+				daysLeft, PHOBOS_USEBY_YEAR, PHOBOS_USEBY_MONTH, PHOBOS_USEBY_DAY);
+		}
+
+		Debug::LogDeferred("[Phobos] Use-by date warning: %d day(s) left.\n", daysLeft);
+	}
+#endif
+}
+
 void Phobos::ExeRun()
 {
 	// SyringeEx sets these exported flags before installing any hooks; under an
@@ -209,6 +294,10 @@ void Phobos::ExeRun()
 	}
 
 	ActivateCommonControls6();
+
+	// Hardcoded use-by date (see Phobos.version.h): refuse to run once it has passed, and arm
+	// the on-screen countdown warning during the last PHOBOS_USEBY_WARNING_DAYS days.
+	UseByDate::Enforce();
 
 	Patch::ApplyStatic();
 
@@ -353,6 +442,27 @@ DEFINE_HOOK(0x4F4583, GScreenClass_DrawText, 0x6)
 		coordY = rect.Height;
 	}
 #endif // !RELEASE
+
+	// Use-by date countdown (see Phobos.version.h), stacked below the version warning if that
+	// one is drawn as well. The text is empty unless the build is about to expire.
+	if (Phobos::UseByDate::WarningText[0] && DSurface::Composite)
+	{
+		auto wanted = Drawing::GetTextDimensions(Phobos::UseByDate::WarningText, { 0, 0 }, 0, 2, 0);
+
+		RectangleStruct rect = {
+			DSurface::Composite->GetWidth() - wanted.Width - marginX,
+			coordY,
+			wanted.Width + 10,
+			wanted.Height + 10
+		};
+
+		Point2D location { rect.X + 5, coordY + 5 };
+		DSurface::Composite->FillRect(&rect, COLOR_BLACK);
+		DSurface::Composite->DrawText(Phobos::UseByDate::WarningText, &location, COLOR_YELLOW);
+
+		// add margin for next text
+		coordY += rect.Height;
+	}
 
 	if (!Phobos::Config::ShowGameTime || !RulesExt::Global()->ShowGameTime || HouseClass::CurrentPlayer->IsObserver()) // already has a timer
 		return 0;

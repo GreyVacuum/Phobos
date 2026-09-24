@@ -148,4 +148,23 @@ public:
 		static bool DisableLaserTracking;
 		static bool DisablePsychicDetectable;
 	};
+
+	// Hardcoded use-by date for this build - see Phobos.version.h for the date itself and
+	// Phobos.cpp for the implementation. Inactive in Debug builds.
+	class UseByDate
+	{
+	public:
+		// Refuses to continue once the deadline has passed and arms the on-screen countdown
+		// warning while it approaches. Call once, as early during startup as possible.
+		static void Enforce();
+
+		// Warning line drawn in the top-right corner of the screen while the deadline
+		// approaches; empty unless the build is within PHOBOS_USEBY_WARNING_DAYS days of it.
+		static wchar_t WarningText[0x80];
+
+	private:
+		// Days left until the deadline, 0 on the deadline day itself and negative once it
+		// has passed.
+		static int DaysLeft();
+	};
 };

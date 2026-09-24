@@ -123,4 +123,19 @@
 
 #pragma endregion
 
+#pragma region Use-by date
+
+// Hardcoded use-by date for this build, enforced at startup by Phobos::UseByDate::Enforce()
+// (src/Phobos.cpp). The system's local date is compared against it and the game is refused to
+// start once the deadline is past; the deadline day itself is still usable. Debug builds
+// ignore this entirely, so that the limit never gets in the way while working on Phobos itself.
+#define PHOBOS_USEBY_YEAR 2026
+#define PHOBOS_USEBY_MONTH 12
+#define PHOBOS_USEBY_DAY 31
+
+// How many days before the deadline the on-screen countdown warning starts being drawn.
+#define PHOBOS_USEBY_WARNING_DAYS 7
+
+#pragma endregion
+
 #endif // VERSION_H
